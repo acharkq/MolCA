@@ -12,18 +12,19 @@ import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
 
-from lavis.common.registry import registry
+# from lavis.common.registry import registry
 from lavis.models.base_model import all_gather_with_grad, concat_all_gather
 from lavis.models.blip2_models.blip2 import (
-    Blip2Base,
+    # Blip2Base,
     compute_sim_matrix,
     disabled_train,
 )
 from lavis.models.blip_models.blip_outputs import BlipOutput, BlipOutputFeatures
+from model.blip2 import Blip2Base
 
 
-@registry.register_model("blip2")
-@registry.register_model("blip2_feature_extractor")
+# @registry.register_model("blip2")
+# @registry.register_model("blip2_feature_extractor")
 class Blip2Qformer(Blip2Base):
     """
     BLIP2 first-stage model with Q-former and ViT.
@@ -35,41 +36,37 @@ class Blip2Qformer(Blip2Base):
         >>> from lavis.models import load_model
         >>> model = load_model("blip2", "pretrain")
     """
-
-    PRETRAINED_MODEL_CONFIG_DICT = {
-        "pretrain": "configs/models/blip2/blip2_pretrain.yaml",
-        "pretrain_vitL": "configs/models/blip2/blip2_pretrain_vitL.yaml",
-        "coco": "configs/models/blip2/blip2_coco.yaml",
-    }
-
     def __init__(
         self,
-        vit_model="eva_clip_g",
-        img_size=224,
-        drop_path_rate=0,
-        use_grad_checkpoint=False,
-        vit_precision="fp16",
-        freeze_vit=True,
+        gtm,
+        lm,
+        bert_name,
+        declip,
+        temperature,
+        gin_num_layers,
+        gin_hidden_dim,
+        gin_drop_ratio,
+        freeze_gnn=True,
         num_query_token=32,
         cross_attention_freq=2,
         embed_dim=256,
-        max_txt_len=32,
     ):
         super().__init__()
-
+        self.gtm = gtm
+        self.lm = lm
+        self.declip = declip
+        
         self.tokenizer = self.init_tokenizer()
 
-        self.visual_encoder, self.ln_vision = self.init_vision_encoder(
-            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
-        )
-        if freeze_vit:
-            for name, param in self.visual_encoder.named_parameters():
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
+        if freeze_gnn:
+            for name, param in self.graph_encoder.named_parameters():
                 param.requires_grad = False
-            self.visual_encoder = self.visual_encoder.eval()
-            self.visual_encoder.train = disabled_train
-            logging.info("freeze vision encoder")
-        self.Qformer, self.query_tokens = self.init_Qformer(
-            num_query_token, self.visual_encoder.num_features, cross_attention_freq
+            self.graph_encoder = self.graph_encoder.eval()
+            self.graph_encoder.train = disabled_train
+            logging.info("freeze graph encoder")
+        
+        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq
         )
         self.Qformer.resize_token_embeddings(len(self.tokenizer))
         state_dict = self.Qformer.state_dict()
@@ -78,182 +75,221 @@ class Blip2Qformer(Blip2Base):
                 key_orig = name.replace("_query", "")
                 param.data.copy_(state_dict[key_orig])
 
-        self.vision_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
+        self.graph_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
         self.text_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
 
-        self.itm_head = nn.Linear(self.Qformer.config.hidden_size, 2)
+        self.gtm_head = nn.Linear(self.Qformer.config.hidden_size, 2)
 
-        self.temp = nn.Parameter(0.07 * torch.ones([]))
+        self.temperature = temperature
 
-        self.max_txt_len = max_txt_len
 
-    def forward(self, samples):
-        image = samples["image"]
-        text = samples["text_input"]
+    def contrast_orig(self, features_graph, features_text):
+        batch_size = features_graph.size(0)
 
-        image_embeds = self.ln_vision(self.visual_encoder(image))
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(
-            image.device
-        )
+        # normalized features
+        features_graph = F.normalize(features_graph, dim=-1)
+        features_text = F.normalize(features_text, dim=-1)
 
-        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
+        # cosine similarity as logits
+        logits_per_graph = features_graph @ features_text.t() / self.temperature
+        logits_per_text = logits_per_graph.t()
 
-        query_output = self.Qformer.bert(
-            query_embeds=query_tokens,
-            encoder_hidden_states=image_embeds,
-            encoder_attention_mask=image_atts,
-            use_cache=True,
-            return_dict=True,
-        )
+        labels = torch.arange(batch_size, dtype=torch.long, device=self.device)  # 大小为B
+        loss_graph = F.cross_entropy(logits_per_graph, labels)
+        loss_text = F.cross_entropy(logits_per_text, labels)
+        loss = (loss_graph + loss_text) / 2
 
-        image_feats = F.normalize(
-            self.vision_proj(query_output.last_hidden_state), dim=-1
-        )
+        return logits_per_graph, logits_per_text, loss
+    
+    def contrast(self, features_graph, features_text, return_sim=False):
+        '''
+        features_graph: shape = [B, num_qs, D]
+        features_text: shape = [B, D]
+        '''
+        batch_size = features_graph.size(0)
 
-        text_tokens = self.tokenizer(
-            text,
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_txt_len,
-            return_tensors="pt",
-        ).to(image.device)
-        text_output = self.Qformer.bert(
-            text_tokens.input_ids,
-            attention_mask=text_tokens.attention_mask,
-            return_dict=True,
-        )
-        text_feat = F.normalize(
-            self.text_proj(text_output.last_hidden_state[:, 0, :]), dim=-1
-        )
+        # normalized features
+        features_graph = F.normalize(features_graph, dim=-1)
+        features_text = F.normalize(features_text, dim=-1)
 
+
+        ## fixme: print to see if the shape is correct
+        # cosine similarity as logits
+        sim_q2t = (features_graph.unsqueeze(1) @ features_text.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
+        sim_q2g, _ = sim_q2t.max(-1) # shape = [B, B]
+
+        logits_per_graph = sim_q2g / self.temperature
+        logits_per_text = logits_per_graph.t()
+
+        labels = torch.arange(batch_size, dtype=torch.long, device=self.device)  # 大小为B
+        loss_graph = F.cross_entropy(logits_per_graph, labels)
+        loss_text = F.cross_entropy(logits_per_text, labels)
+        loss = (loss_graph + loss_text) / 2
+
+        if return_sim:
+            return logits_per_graph, logits_per_text, loss
+        else:
+            return loss
+    
+    def forward(self, batch):
         ###============== Image-text Contrastive ===================###
-        image_feats_all = concat_all_gather(
-            image_feats
-        )  # [batch_size*num_gpu, num_query_tokens, embed_dim]
-        text_feat_all = concat_all_gather(text_feat)  # [batch_size*num_gpu, embed_dim]
+        if self.declip:
+            graph, graph2, text, mask, text2, mask2 = batch
+            batch_node, batch_mask = self.graph_encoder(graph)
+            batch_node2, batch_mask2 = self.graph_encoder(graph2)
+            batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
+            assert batch_node2.shape[0] == batch_node.shape[0]
+            batch_size = batch_node.shape[0]
 
-        sim_q2t = torch.matmul(
-            image_feats.unsqueeze(1), text_feat_all.unsqueeze(-1)
-        ).squeeze() # shape = [B, 1, num_q, D]; [B, D, ]
-        # [batch_size, batch_size*num_gpu, num_query_tokens]
+            batch_node, batch_node2 = self.ln_graph(batch_node), self.ln_graph(batch_node2)
 
-        # image-text similarity: aggregate across all query tokens
-        sim_i2t, _ = sim_q2t.max(-1)
-        sim_i2t = sim_i2t / self.temp
+            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=batch_node,
+                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
+                use_cache=True,
+                return_dict=True,
+            )
+            query_output2 = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=batch_node2,
+                encoder_attention_mask=batch_mask2, # fixme: check whether this mask is correct
+                use_cache=True,
+                return_dict=True,
+            )
+            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
+            graph_feats2 = self.graph_proj(query_output2.last_hidden_state) # shape = [B, num_q, D]
+            
+            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
+            text_output2 = self.Qformer.bert(text2, attention_mask=mask2, return_dict=True) # shape = [B, n_max, D]
+            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :] )
+            text_feats2 = self.text_proj(text_output2.last_hidden_state[:, 0, :])
+            
+            sim_g2t, sim_t2g, loss11 = self.contrast(graph_feats, text_feats, return_sim=True)
+            loss12 = self.contrast(graph_feats, text_feats2)
+            loss21 = self.contrast(graph_feats2, text_feats)
+            loss22 = self.contrast(graph_feats2, text_feats2)
 
-        # text-query similarity: [batch_size, batch_size*num_gpu, num_query_tokens]
-        sim_t2q = torch.matmul(
-            text_feat.unsqueeze(1).unsqueeze(1), image_feats_all.permute(0, 2, 1)
-        ).squeeze()
+            # if self.graph_self:
+            #     _, _, loss_graph_self = self.contrast(graph_feats, graph_feats2)
+            #     loss_cl = (loss11 + loss12 + loss21 + loss22 + loss_graph_self) / 5.0
+            # else:
+            loss_gtc = (loss11 + loss12 + loss21 + loss22) / 4.0
+        else:
+            graph, text, mask = batch
+            batch_node, batch_mask = self.graph_encoder(graph)
+            batch_node = batch_node.detach()
+            batch_size = batch_node.shape[0]
 
-        # text-image similarity: aggregate across all query tokens
-        sim_t2i, _ = sim_t2q.max(-1)
-        sim_t2i = sim_t2i / self.temp  # [batch_size, batch_size*num_gpu]
+            batch_node = self.ln_graph(batch_node)
+            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=batch_node,
+                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
+                use_cache=True,
+                return_dict=True,
+            )
+            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
+            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
+            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
+            sim_g2t, sim_t2g, loss_gtc = self.contrast(graph_feats, text_feats, return_sim=True)
 
-        rank = dist.get_rank()
-        bs = image.size(0)
-        targets = torch.linspace(rank * bs, rank * bs + bs - 1, bs, dtype=int).to(
-            image.device
-        )
-
-        loss_itc = (
-            F.cross_entropy(sim_i2t, targets, label_smoothing=0.1)
-            + F.cross_entropy(sim_t2i, targets, label_smoothing=0.1)
-        ) / 2
 
         ###============== Image-text Matching ===================###
-        text_input_ids_world = concat_all_gather(text_tokens.input_ids)
-        text_attention_mask_world = concat_all_gather(text_tokens.attention_mask)
-        image_embeds_world = all_gather_with_grad(image_embeds)
-        with torch.no_grad():
-            weights_t2i = F.softmax(sim_t2i, dim=1) + 1e-4
-            weights_t2i[:, rank * bs : rank * bs + bs].fill_diagonal_(0)
-            weights_i2t = F.softmax(sim_i2t, dim=1) + 1e-4
-            weights_i2t[:, rank * bs : rank * bs + bs].fill_diagonal_(0)
+        loss_gtm = 0
+        if self.gtm:
+            g_emb = batch_node
+            g_mask = batch_mask
+            text_ids = text.clone()
+            with torch.no_grad():
+                weights_t2g = F.softmax(sim_t2g, dim=1) + 1e-4
+                weights_t2g.fill_diagonal_(0)
+                weights_g2t = F.softmax(sim_g2t, dim=1) + 1e-4
+                weights_g2t.fill_diagonal_(0)
 
-        # select a negative image for each text
-        image_embeds_neg = []
-        for b in range(bs):
-            neg_idx = torch.multinomial(weights_t2i[b], 1).item()
-            image_embeds_neg.append(image_embeds_world[neg_idx])
-        image_embeds_neg = torch.stack(image_embeds_neg, dim=0)
+            # select a negative graph for each text
+            graph_embeds_neg = []
+            graph_mask_neg = []
+            for b in range(batch_size):
+                neg_idx = torch.multinomial(weights_t2g[b], 1).item()
+                graph_embeds_neg.append(g_emb[neg_idx])
+                graph_mask_neg.append(g_mask[neg_idx])
+            
+            graph_embeds_neg = torch.stack(graph_embeds_neg, dim=0)
+            graph_mask_neg = torch.stack(graph_mask_neg, dim=0)
 
-        # select a negative text for each image
-        text_ids_neg = []
-        text_atts_neg = []
-        for b in range(bs):
-            neg_idx = torch.multinomial(weights_i2t[b], 1).item()
-            text_ids_neg.append(text_input_ids_world[neg_idx])
-            text_atts_neg.append(text_attention_mask_world[neg_idx])
+            # select a negative text for each image
+            text_ids_neg = []
+            text_atts_neg = []
+            for b in range(batch_size):
+                neg_idx = torch.multinomial(weights_g2t[b], 1).item()
+                text_ids_neg.append(text_ids[neg_idx])
+                text_atts_neg.append(mask[neg_idx])
 
-        text_ids_neg = torch.stack(text_ids_neg, dim=0)
-        text_atts_neg = torch.stack(text_atts_neg, dim=0)
+            text_ids_neg = torch.stack(text_ids_neg, dim=0)
+            text_atts_neg = torch.stack(text_atts_neg, dim=0)
 
-        text_ids_all = torch.cat(
-            [text_tokens.input_ids, text_tokens.input_ids, text_ids_neg], dim=0
-        )  # pos, pos, neg
-        text_atts_all = torch.cat(
-            [text_tokens.attention_mask, text_tokens.attention_mask, text_atts_neg],
-            dim=0,
-        )
+            text_ids_all = torch.cat(
+                [text_ids, text_ids, text_ids_neg], dim=0
+            )  # pos, pos, neg
+            text_atts_all = torch.cat(
+                [mask, mask, text_atts_neg],
+                dim=0,
+            )
 
-        query_tokens_itm = self.query_tokens.expand(text_ids_all.shape[0], -1, -1)
-        query_atts_itm = torch.ones(query_tokens_itm.size()[:-1], dtype=torch.long).to(
-            image.device
-        )
-        attention_mask_all = torch.cat([query_atts_itm, text_atts_all], dim=1)
+            query_tokens_itm = self.query_tokens.expand(text_ids_all.shape[0], -1, -1)
+            query_atts_itm = torch.ones(query_tokens_itm.size()[:-1], dtype=torch.long, device=text.device)
+            attention_mask_all = torch.cat([query_atts_itm, text_atts_all], dim=1)
 
-        image_embeds_all = torch.cat(
-            [image_embeds, image_embeds_neg, image_embeds], dim=0
-        )  # pos, neg, pos
-        image_atts_all = torch.ones(image_embeds_all.size()[:-1], dtype=torch.long).to(
-            image.device
-        )
+            graph_embeds_all = torch.cat([g_emb, graph_embeds_neg, g_emb], dim=0)  # pos, neg, pos
+            graph_atts_all = torch.cat([g_mask, graph_mask_neg, g_mask], dim=0)
 
-        output_itm = self.Qformer.bert(
-            text_ids_all,
-            query_embeds=query_tokens_itm,
-            attention_mask=attention_mask_all,
-            encoder_hidden_states=image_embeds_all,
-            encoder_attention_mask=image_atts_all,
-            return_dict=True,
-        )
+            output_itm = self.Qformer.bert(
+                text_ids_all,
+                query_embeds=query_tokens_itm,
+                attention_mask=attention_mask_all,
+                encoder_hidden_states=graph_embeds_all,
+                encoder_attention_mask=graph_atts_all,
+                return_dict=True,
+            )
 
-        vl_embeddings = output_itm.last_hidden_state[:, : query_tokens_itm.size(1), :]
-        vl_output = self.itm_head(vl_embeddings)
-        logits = vl_output.mean(dim=1)
+            vl_embeddings = output_itm.last_hidden_state[:, : query_tokens_itm.size(1), :] # keep query tokens only
+            vl_output = self.gtm_head(vl_embeddings)
+            logits = vl_output.mean(dim=1)
 
-        itm_labels = torch.cat(
-            [torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
-            dim=0,
-        ).to(image.device)
-        loss_itm = F.cross_entropy(logits, itm_labels)
+            itm_labels = torch.cat(
+                [torch.ones(batch_size, dtype=torch.long), torch.zeros(2 * batch_size, dtype=torch.long)],
+                dim=0,
+            ).to(text.device)
+            loss_gtm = F.cross_entropy(logits, itm_labels)
 
         ##================= Image Captioning ========================##
-        decoder_input_ids = text_tokens.input_ids.clone()
-        decoder_input_ids[:, 0] = self.tokenizer.bos_token_id
-        labels = decoder_input_ids.masked_fill(
-            decoder_input_ids == self.tokenizer.pad_token_id, -100
-        )
+        loss_lm = 0
+        if self.lm:
+            decoder_input_ids = text.clone()
+            decoder_input_ids[:, 0] = self.tokenizer.bos_token_id
+            labels = decoder_input_ids.masked_fill(
+                decoder_input_ids == self.tokenizer.pad_token_id, -100
+            )
+            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long, device=text.device)
+            
+            attention_mask = torch.cat([query_atts, mask], dim=1)
+            lm_output = self.Qformer(
+                decoder_input_ids,
+                attention_mask=attention_mask,
+                past_key_values=query_output.past_key_values,
+                return_dict=True,
+                labels=labels,
+            )
 
-        query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(
-            image.device
-        )
-        attention_mask = torch.cat([query_atts, text_tokens.attention_mask], dim=1)
-        lm_output = self.Qformer(
-            decoder_input_ids,
-            attention_mask=attention_mask,
-            past_key_values=query_output.past_key_values,
-            return_dict=True,
-            labels=labels,
-        )
-
-        loss_lm = lm_output.loss
+            loss_lm = lm_output.loss
 
         return BlipOutput(
-            loss=loss_itc + loss_itm + loss_lm,
-            loss_itc=loss_itc,
-            loss_itm=loss_itm,
+            loss=loss_gtc + loss_gtm + loss_lm,
+            loss_itc=loss_gtc,
+            loss_itm=loss_gtm,
             loss_lm=loss_lm,
         )
 
@@ -362,7 +398,7 @@ class Blip2Qformer(Blip2Base):
             return_dict=True,
         )
         vl_embeddings = output_itm.last_hidden_state[:, : query_tokens.size(1), :]
-        itm_logit = self.itm_head(vl_embeddings)
+        itm_logit = self.gtm_head(vl_embeddings)
         itm_logit = itm_logit[:, :, 1].mean(dim=1)
         return itm_logit
 

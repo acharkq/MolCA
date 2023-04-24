@@ -300,6 +300,8 @@ class GINSimclr(pl.LightningModule):
 
         g_emb = torch.cat([batch_graph_rep.unsqueeze(1), batch_node_rep], dim=1)
         g_mask = torch.cat([torch.ones(batch_mask.size()[:-1], dtype=torch.long).unsqueeze(1).to(self.device), batch_mask], dim=1)
+
+        ## use only 64 samples to calculate matching loss
         g_emb, g_mask = g_emb[:, :64, :], g_mask[:, :64]
         self.log("cl_loss", loss_cl, batch_size=batch_size)
         loss += loss_cl
