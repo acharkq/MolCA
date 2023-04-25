@@ -14,7 +14,7 @@ import torch.nn as nn
 from lavis.common.dist_utils import download_cached_file, is_dist_avail_and_initialized
 from lavis.common.utils import get_abs_path, is_url
 from omegaconf import OmegaConf
-
+import pytorch_lightning as pl
 
 class BaseModel(nn.Module):
     """Base class for models."""

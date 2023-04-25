@@ -1,18 +1,17 @@
-import os
 import argparse
 import torch
-import random
-import numpy as np
-from torch import optim
-import torch.nn as nn
-import time
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
 from model.blip2_stage1 import Blip2Stage1
 from data_provider.pretrain_datamodule import GINPretrainDataModule
 import warnings
+
+## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
+## for A5000 gpus
+# torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
+
 
 def main(args):
     pl.seed_everything(args.seed)
@@ -53,9 +52,9 @@ if __name__ == '__main__':
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
     parser = GINPretrainDataModule.add_argparse_args(parser)  # add data args
 
-    parser.set_defaults(batch_size=16,
+    parser.set_defaults(batch_size=24,
                         accelerator='gpu',
-                        gpus='0,1,2,3',
+                        devices='0,1,2',
                         precision=16,
                         max_epochs=100,
                         num_workers=8,
@@ -70,7 +69,5 @@ if __name__ == '__main__':
     for k, v in sorted(vars(args).items()):
         print(k, '=', v)
     print("=========================================")
-    ## for A5000 gpus
-    torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
     main(args)
 
