@@ -2,18 +2,23 @@ import argparse
 import random
 import numpy as np
 import torch
+import util_funcs
 from torch.autograd import Variable
 from tqdm import tqdm
-from model.contrastive_gin import GINSimclr
+from model.blip2qformer import Blip2Qformer
+from model.blip2_stage1 import Blip2Stage1
 from data_provider.match_dataset import GINMatchDataset
 import torch_geometric
 from optimization import BertAdam
-from torch.utils.data import RandomSampler
-import os
+from pathlib import Path
 
+import warnings
+## for pyg bug
+warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 
 def prepare_model_and_optimizer(args, device):
-    model = GINSimclr.load_from_checkpoint(args.init_checkpoint)
+    model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint)
+    model = model.blip2qformer
     model.to(device)
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -41,42 +46,52 @@ def prepare_model_and_optimizer(args, device):
 
 @torch.no_grad()
 def Eval(model, dataloader, device, args):
+    assert isinstance(model, Blip2Qformer)
     model.eval()
-    acc1 = 0
-    acc2 = 0
+    g2t_acc = 0
+    t2g_acc = 0
+    g2t_rec20 = 0
+    t2g_rec20 = 0
     allcnt = 0
-    graph_rep_total = None
-    text_rep_total = None
+    graph_rep_total = []    
+    text_rep_total = []
     for batch in tqdm(dataloader):
         aug, text, mask = batch
         aug = aug.to(device)
         text = text.to(device)
         mask = mask.to(device)
-        _, _, graph_rep = model.graph_encoder(aug)
-        graph_rep = model.graph_proj_head(graph_rep)
+        graph_rep = model.graph_forward(aug) # shape = [B, num_qs, D]
+        text_rep = model.text_forward(text, mask) # shape = [B, D]
 
-        text_rep = model.text_encoder(text, mask)
-        text_rep = model.text_proj_head(text_rep)
+        sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
+        sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
 
-        scores1 = torch.cosine_similarity(graph_rep.unsqueeze(1).expand(graph_rep.shape[0], graph_rep.shape[0], graph_rep.shape[1]), text_rep.unsqueeze(0).expand(text_rep.shape[0], text_rep.shape[0], text_rep.shape[1]), dim=-1)
-        scores2 = torch.cosine_similarity(text_rep.unsqueeze(1).expand(text_rep.shape[0], text_rep.shape[0], text_rep.shape[1]), graph_rep.unsqueeze(0).expand(graph_rep.shape[0], graph_rep.shape[0], graph_rep.shape[1]), dim=-1)
+        B = sim_g2t.shape[0]
+        sorted_ids = sim_g2t.argsort(descending=True).cpu()
+        g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
+        t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        # argm1 = torch.argmax(sim_g2t, axis=1)
+        # argm2 = torch.argmax(sim_g2t.T, axis=1)
 
-        argm1 = torch.argmax(scores1, axis=1)
-        argm2 = torch.argmax(scores2, axis=1)
+        g2t_acc += float((g2t_rank == 0).sum())
+        t2g_acc += float((t2g_rank == 0).sum())
+        g2t_rec20 += float((g2t_rank < 20).sum())
+        t2g_rec20 += float((t2g_rank < 20).sum())
+        
+        allcnt += B
 
-        acc1 += sum((argm1 == torch.arange(argm1.shape[0]).to(device)).int()).item()
-        acc2 += sum((argm2 == torch.arange(argm2.shape[0]).to(device)).int()).item()
+        graph_rep_total.append(graph_rep.cpu())
+        text_rep_total.append(text_rep.cpu())
 
-        allcnt += argm1.shape[0]
+    graph_rep_total = torch.cat(graph_rep_total, dim=0)
+    text_rep_total = torch.cat(text_rep_total, dim=0)
 
-        if graph_rep_total is None or text_rep_total is None:
-            graph_rep_total = graph_rep
-            text_rep_total = text_rep
-        else:
-            graph_rep_total = torch.cat((graph_rep_total, graph_rep), axis=0)
-            text_rep_total = torch.cat((text_rep_total, text_rep), axis=0)
-
-    return acc1/allcnt, acc2/allcnt, graph_rep_total.cpu(), text_rep_total.cpu()
+    g2t_acc = round(g2t_acc/allcnt * 100, 2)
+    t2g_acc = round(t2g_acc/allcnt * 100, 2)
+    g2t_rec20 = round(g2t_rec20 / allcnt * 100, 2)
+    t2g_rec20 = round(t2g_rec20 / allcnt * 100, 2)
+    return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total
 
 
 def Contra_Loss(logits_des, logits_smi, margin, device):
@@ -116,33 +131,40 @@ def main(args):
     test_dataloader = torch_geometric.loader.DataLoader(TestSet, shuffle=True, batch_size=args.batch_size,
                                                         num_workers=4, pin_memory=True, drop_last=False)
     if args.run_type == 'zs':
-        acc1, acc2, graph_rep, text_rep = Eval(model, test_dataloader, device, args)
-        print('Test Acc G2T:', acc1)
-        print('Test Acc T2G:', acc2)
-        graph_len = graph_rep.shape[0]
-        text_len = text_rep.shape[0]
-        score1 = torch.zeros(graph_len, graph_len)
-        for i in range(graph_len):
-            score1[i] = torch.cosine_similarity(graph_rep[i], text_rep, dim=-1)
-        rec1 = []
-        for i in range(graph_len):
-            a, idx = torch.sort(score1[:, i])
-            for j in range(graph_len):
-                if idx[-1-j] == i:
-                    rec1.append(j)
-                    break
-        print(f'Rec@20 G2T: {sum( (np.array(rec1)<20).astype(int) ) / graph_len}')
-        score2 = torch.zeros(graph_len, graph_len)
-        for i in range(graph_len):
-            score2[i] = torch.cosine_similarity(text_rep[i], graph_rep, dim=-1)
-        rec2 = []
-        for i in range(graph_len):
-            a, idx = torch.sort(score2[:, i])
-            for j in range(graph_len):
-                if idx[-1-j] == i:
-                    rec2.append(j)
-                    break
-        print(f'Rec@20 T2G: {sum( (np.array(rec2)<20).astype(int) ) / graph_len}')
+        g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep, text_rep = Eval(model, test_dataloader, device, args)
+        print('G2T: Acc  Rec20  T2G: Acc   Rec20', )
+        util_funcs.write_log(f'In batch:{args.init_checkpoint}  {g2t_acc}  {g2t_rec20}  {t2g_acc}  {t2g_rec20}', args.log_path)
+        
+        # graph_rep shape = [N, num_qs, D]; text_rep shape = [N, D]
+        assert graph_rep.shape[0] == text_rep.shape[0] 
+        N = graph_rep.shape[0]
+        B = 8
+        text_rep = text_rep.to(device)
+        sim_g2t = []
+        for i in tqdm(range(0, N, B)):
+            l_graph_rep = graph_rep[i:i+B].to(device)
+            sim_q2t = (l_graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [N, D, 1]; output shape = [B, N, num_qs]
+            l_sim_g2t, _ = sim_q2t.max(-1) # shape = [B, N]
+            sim_g2t.append(l_sim_g2t)
+        sim_g2t = torch.cat(sim_g2t, dim=0) # shape = [N, N]
+        
+        sorted_ids = torch.argsort(sim_g2t, descending=True)
+        rank_g2t = (sorted_ids == torch.arange(N, device=device).reshape(-1, 1)).int().argmax(dim=-1)
+        sorted_ids = torch.argsort(sim_g2t.T, descending=True)
+        rank_t2g = (sorted_ids == torch.arange(N, device=device).reshape(-1, 1)).int().argmax(dim=-1)
+        
+        g2t_acc = float((rank_g2t == 0).float().mean())
+        g2t_rec20 = float((rank_g2t < 20).float().mean())
+        t2g_acc = float((rank_t2g == 0).float().mean())
+        t2g_rec20 = float((rank_t2g < 20).float().mean())
+        g2t_acc = round(g2t_acc * 100, 2)
+        g2t_rec20 = round(g2t_rec20 * 100, 2)
+        t2g_acc = round(t2g_acc * 100, 2)
+        t2g_rec20 = round(t2g_rec20 * 100, 2)
+        print('---------------------')
+        print('G2T: Acc  Rec20  T2G: Acc   Rec20', )
+        util_funcs.write_log(f'In test set:{args.init_checkpoint}  {g2t_acc}  {g2t_rec20}  {t2g_acc}  {t2g_rec20}', args.log_path)
+
 
     elif args.run_type == 'ft':
         TrainSet = GINMatchDataset(args.train_dataset + '/', args)
@@ -229,12 +251,12 @@ def main(args):
 
 def parse_args(parser=argparse.ArgumentParser()):
     parser.add_argument("--device", default="0", type=str)
-    parser.add_argument("--init_checkpoint", default="all_checkpoints/cl_gtm_lm_320k_v2/epoch=29.ckpt", type=str)
+    parser.add_argument("--init_checkpoint", default="all_checkpoints/cl_gtm_lm_50k/epoch=99-step=65700.ckpt", type=str)
     parser.add_argument("--run_type", default='zs', type=str, help='zs-zeroshot, ft-finetune')
     # parser.add_argument("--train_dataset", default='data/kv_data/train', type=str)
     # parser.add_argument("--val_dataset", default='data/kv_data/dev', type=str)
     # parser.add_argument("--test_dataset", default='our_data/PubChemDataset_v2/test', type=str)
-    parser.add_argument("--test_dataset", default='data/phy_data', type=str)
+    parser.add_argument("--test_dataset", default='data/PubChemDataset/PubChem-50k/test', type=str)
     parser.add_argument("--weight_decay", default=0, type=float)
     parser.add_argument("--lr", default=5e-5, type=float)
     parser.add_argument("--warmup", default=0.2, type=float)
@@ -250,4 +272,12 @@ def parse_args(parser=argparse.ArgumentParser()):
 
 
 if __name__ == "__main__":
-    main(parse_args())
+    args = parse_args()
+    ckt_path = './all_checkpoints/cl_gtm_lm_50k'
+    paths = list(Path(ckt_path).glob('*'))
+    paths.sort()
+    args.log_path = './log.txt'
+    for p in paths:
+        args.init_checkpoint = str(p)
+        main(args)
+        torch.cuda.empty_cache()

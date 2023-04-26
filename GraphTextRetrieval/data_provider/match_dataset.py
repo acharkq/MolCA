@@ -22,6 +22,12 @@ class GINMatchDataset(Dataset):
         self.smiles_name_list.sort()
         self.tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
 
+    def get(self, idx):
+        return self.__getitem__(idx)
+
+    def len(self):
+        return len(self)
+
     def __len__(self):
         return len(self.graph_name_list)
 
@@ -48,6 +54,8 @@ class GINMatchDataset(Dataset):
 
     def __getitem__(self, index):
         graph_name, text_name, smiles_name = self.graph_name_list[index], self.text_name_list[index], self.smiles_name_list[index]
+        assert graph_name.strip('.pt').strip('graph_') == text_name.strip('.txt').strip('text_') == smiles_name.strip('.txt').strip('smiles_'), print(graph_name, text_name, smiles_name)
+        
 
         graph_path = os.path.join(self.root, 'graph', graph_name)
         data_graph = torch.load(graph_path)

@@ -259,6 +259,8 @@ class GNN(torch.nn.Module):
         self.batch_norms = torch.nn.ModuleList()
         for layer in range(num_layer):
             self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
+        self.num_features = emb_dim
+        self.cat_grep = True
 
     #def forward(self, x, edge_index, edge_attr):
     def forward(self, *argv):
@@ -294,13 +296,19 @@ class GNN(torch.nn.Module):
             node_representation = torch.max(torch.cat(h_list, dim = 0), dim = 0)[0]
         elif self.JK == "sum":
             h_list = [h.unsqueeze_(0) for h in h_list]
-            node_representation = torch.sum(torch.cat(h_list, dim = 0), dim = 0)[0]
+            node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
         
 
-        h_graph = self.pool(node_representation, batch)
-        batch_node, batch_mask = to_dense_batch(node_representation, batch)
+        h_graph = self.pool(node_representation, batch) # shape = [B, D]
+        batch_node, batch_mask = to_dense_batch(node_representation, batch) # shape = [B, n_max, D], 
+        batch_mask = batch_mask.long()
 
-        return batch_node, batch_mask.long(), h_graph
+        if self.cat_grep:
+            batch_node = torch.cat((h_graph.unsqueeze(1), batch_node), dim=1) # shape = [B, n_max+1, D]
+            batch_mask = torch.cat([torch.ones((batch_mask.shape[0], 1), dtype=torch.long, device=batch.device), batch_mask], dim=1)
+            return batch_node, batch_mask
+        else:
+            return batch_node, batch_mask, h_graph
 
 
 class GNN_graphpred(torch.nn.Module):

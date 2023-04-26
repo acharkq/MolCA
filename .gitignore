@@ -2,3 +2,4 @@ kvplm_pretrained
 __pycache__
 test*
 data
+log*
