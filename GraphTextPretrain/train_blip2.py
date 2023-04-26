@@ -6,6 +6,7 @@ import pytorch_lightning.callbacks as plc
 from model.blip2_stage1 import Blip2Stage1
 from data_provider.pretrain_datamodule import GINPretrainDataModule
 import warnings
+from pytorch_lightning import strategies
 
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -28,10 +29,11 @@ def main(args):
 
     callbacks = []
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
-    strategy = pl.strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
-                                         strategy=strategy,
+                                         strategty=strategy
+                                        #  strategy='deepspeed_stage_2',
                                          # accumulate_grad_batches=8,
                                          )
 
@@ -52,9 +54,9 @@ if __name__ == '__main__':
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
     parser = GINPretrainDataModule.add_argparse_args(parser)  # add data args
 
-    parser.set_defaults(batch_size=24,
+    parser.set_defaults(batch_size=16,
                         accelerator='gpu',
-                        devices='0,1,2',
+                        devices='0,1,2,3',
                         precision=16,
                         max_epochs=100,
                         num_workers=8,
