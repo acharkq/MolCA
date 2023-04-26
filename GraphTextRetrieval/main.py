@@ -143,8 +143,8 @@ def main(args):
         sim_g2t = []
         for i in tqdm(range(0, N, B)):
             l_graph_rep = graph_rep[i:i+B].to(device)
-            sim_q2t = (l_graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [N, D, 1]; output shape = [B, N, num_qs]
-            l_sim_g2t, _ = sim_q2t.max(-1) # shape = [B, N]
+            l_sim_q2t = (l_graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [N, D, 1]; output shape = [B, N, num_qs]
+            l_sim_g2t, _ = l_sim_q2t.max(-1) # shape = [B, N]
             sim_g2t.append(l_sim_g2t)
         sim_g2t = torch.cat(sim_g2t, dim=0) # shape = [N, N]
         
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     ckt_path = './all_checkpoints/cl_gtm_lm_50k'
     paths = list(Path(ckt_path).glob('*'))
     paths.sort()
-    args.log_path = './log.txt'
+    args.log_path = './logs/log.txt'
     for p in paths:
         args.init_checkpoint = str(p)
         main(args)
