@@ -52,8 +52,8 @@ class MMEncoder(nn.Module):
                 config.graph_dim = graph_dim
             self.main_model = MMBert.from_pretrained('bert_pretrained/', config=config)
             if lm:
-                bert_model = MMBert.from_pretrained('bert_pretrained/', config=config)
-                self.decoder = MMBertLMHeadModel(config=config, bert_model=bert_model)
+                # bert_model = MMBert.from_pretrained('bert_pretrained/', config=config)
+                self.decoder = MMBertLMHeadModel(config=config)
         elif pretrain == 'kvplm':
             print("bert load kvplm")
             config = BertConfig(vocab_size=31090, )
@@ -117,7 +117,9 @@ class MMBert(BertPreTrainedModel):
     def __init__(self, config, add_pooling_layer=True, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         self.config = config
+
         self.embeddings = BertEmbeddings(config)
+
         self.encoder = BertEncoder(config)
 
         self.pooler = BertPooler(config) if add_pooling_layer else None
@@ -139,6 +141,66 @@ class MMBert(BertPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
+    def _get_extended_attention_mask(self, attention_mask, input_shape, device, is_decoder):
+        """
+        Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
+        Arguments:
+            attention_mask (:obj:`torch.Tensor`):
+                Mask with ones indicating tokens to attend to, zeros for tokens to ignore.
+            input_shape (:obj:`Tuple[int]`):
+                The shape of the input to the model.
+            device: (:obj:`torch.device`):
+                The device of the input to the model.
+        Returns:
+            :obj:`torch.Tensor` The extended attention mask, with a the same dtype as :obj:`attention_mask.dtype`.
+        """
+        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+        # ourselves in which case we just need to make it broadcastable to all heads.
+        if attention_mask.dim() == 3:
+            extended_attention_mask = attention_mask[:, None, :, :]
+        elif attention_mask.dim() == 2:
+            # Provided a padding mask of dimensions [batch_size, seq_length]
+            # - if the model is a decoder, apply a causal mask in addition to the padding mask
+            # - if the model is an encoder, make the mask broadcastable to [batch_size, num_heads, seq_length, seq_length]
+            if is_decoder:
+                batch_size, seq_length = input_shape
+
+                seq_ids = torch.arange(seq_length, device=device)
+                causal_mask = seq_ids[None, None, :].repeat(batch_size, seq_length, 1) <= seq_ids[None, :, None]
+                # in case past_key_values are used we need to add a prefix ones mask to the causal mask
+                # causal and attention masks must have same type with pytorch version < 1.3
+                causal_mask = causal_mask.to(attention_mask.dtype)
+
+                if causal_mask.shape[1] < attention_mask.shape[1]:
+                    prefix_seq_len = attention_mask.shape[1] - causal_mask.shape[1]
+                    causal_mask = torch.cat(
+                        [
+                            torch.ones((batch_size, seq_length, prefix_seq_len), device=device,
+                                       dtype=causal_mask.dtype),
+                            causal_mask,
+                        ],
+                        axis=-1,
+                    )
+
+                extended_attention_mask = causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
+            else:
+                extended_attention_mask = attention_mask[:, None, None, :]
+        else:
+            raise ValueError(
+                "Wrong shape for input_ids (shape {}) or attention_mask (shape {})".format(
+                    input_shape, attention_mask.shape
+                )
+            )
+
+        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and -10000.0 for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        return extended_attention_mask
+
     def forward(
             self,
             input_ids=None,
@@ -147,6 +209,7 @@ class MMBert(BertPreTrainedModel):
             position_ids=None,
             head_mask=None,
             inputs_embeds=None,
+            encoder_embeds=None,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             past_key_values=None,
@@ -154,6 +217,7 @@ class MMBert(BertPreTrainedModel):
             output_attentions=None,
             output_hidden_states=None,
             return_dict=None,
+            is_decoder=False,
     ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -170,13 +234,21 @@ class MMBert(BertPreTrainedModel):
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             input_shape = input_ids.size()
+            batch_size, seq_length = input_shape
+            device = input_ids.device
         elif inputs_embeds is not None:
             input_shape = inputs_embeds.size()[:-1]
+            batch_size, seq_length = input_shape
+            device = inputs_embeds.device
+        elif encoder_embeds is not None:
+            input_shape = encoder_embeds.size()[:-1]
+            batch_size, seq_length = input_shape
+            device = encoder_embeds.device
         else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
+            raise ValueError("You have to specify either input_ids or inputs_embeds or encoder_embeds")
 
-        batch_size, seq_length = input_shape
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
+        # batch_size, seq_length = input_shape
+        # device = input_ids.device if input_ids is not None else inputs_embeds.device
 
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
@@ -194,16 +266,24 @@ class MMBert(BertPreTrainedModel):
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        extended_attention_mask: torch.Tensor = self._get_extended_attention_mask(attention_mask, input_shape, device, is_decoder)
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if encoder_hidden_states is not None:
-            encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
+            if type(encoder_hidden_states) == list:
+                encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[0].size()
+            else:
+                encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
-            if encoder_attention_mask is None:
+
+            if type(encoder_attention_mask) == list:
+                encoder_extended_attention_mask = [self.invert_attention_mask(mask) for mask in encoder_attention_mask]
+            elif encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-            encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+                encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+            else:
+                encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
 
@@ -214,13 +294,16 @@ class MMBert(BertPreTrainedModel):
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
-        embedding_output = self.embeddings(
-            input_ids=input_ids,
-            position_ids=position_ids,
-            token_type_ids=token_type_ids,
-            inputs_embeds=inputs_embeds,
-            past_key_values_length=past_key_values_length,
-        )
+        if encoder_embeds is None:
+            embedding_output = self.embeddings(
+                input_ids=input_ids,
+                position_ids=position_ids,
+                inputs_embeds=inputs_embeds,
+                past_key_values_length=past_key_values_length,
+            )
+        else:
+            embedding_output = encoder_embeds
+
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
@@ -705,11 +788,12 @@ class MMBertLMHeadModel(BertPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]
 
-    def __init__(self, config, bert_model):
+    def __init__(self, config):
         super().__init__(config)
 
         # self.bert = MMBert(config, add_pooling_layer=False)
-        self.bert = bert_model
+        self.bert = MMBert.from_pretrained('bert_pretrained/', config=config)
+        # self.bert = bert_model
         self.cls = BertOnlyMLMHead(config)
 
         # Initialize weights and apply final processing
@@ -737,6 +821,7 @@ class MMBertLMHeadModel(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        is_decoder=True,
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if labels is not None:
@@ -756,6 +841,7 @@ class MMBertLMHeadModel(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            is_decoder=is_decoder,
         )
 
         sequence_output = outputs[0]
