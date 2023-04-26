@@ -32,7 +32,7 @@ def main(args):
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
-                                         strategty=strategy
+                                         strategy=strategy
                                         #  strategy='deepspeed_stage_2',
                                          # accumulate_grad_batches=8,
                                          )
