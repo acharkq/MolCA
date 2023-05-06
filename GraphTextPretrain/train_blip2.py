@@ -7,6 +7,7 @@ from model.blip2_stage1 import Blip2Stage1
 from data_provider.pretrain_datamodule import GINPretrainDataModule
 import warnings
 from pytorch_lightning import strategies
+from pytorch_lightning.loggers import CSVLogger
 
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -30,11 +31,11 @@ def main(args):
     callbacks = []
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    logger = CSVLogger(save_dir='./')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
-                                         strategy=strategy
-                                        #  strategy='deepspeed_stage_2',
-                                         # accumulate_grad_batches=8,
+                                         strategy=strategy,
+                                         logger=logger
                                          )
 
     trainer.fit(model, datamodule=dm)
