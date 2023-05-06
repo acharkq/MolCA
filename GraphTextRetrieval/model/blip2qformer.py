@@ -405,8 +405,8 @@ class Blip2Qformer(Blip2Base):
             text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :] )
             text_feats2 = self.text_proj(text_output2.last_hidden_state[:, 0, :])
             
-            graph_feats, graph_feats2 = F.normalize(graph_feats), F.normalize(graph_feats2)
-            text_feats, text_feats2 = F.normalize(text_feats), F.normalize(text_feats2)
+            graph_feats, graph_feats2 = F.normalize(graph_feats, p=2, dim=-1), F.normalize(graph_feats2, p=2, dim=-1)
+            text_feats, text_feats2 = F.normalize(text_feats, p=2, dim=-1), F.normalize(text_feats2, p=2, dim=-1)
             text_feats_all, text_feats_all2 = pl_concat_all_gather(text_feats), pl_concat_all_gather(text_feats2) # shape = [B * num_gpus, D]
             graph_feats_all, graph_feats_all2 = pl_concat_all_gather(graph_feats), pl_concat_all_gather(graph_feats2) # shape = [B * num_gpus, num_qs, D]
 
@@ -434,7 +434,7 @@ class Blip2Qformer(Blip2Base):
             text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
             text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
             
-            text_feats, graph_feats = F.normalize(text_feats), F.normalize(graph_feats)
+            text_feats, graph_feats = F.normalize(text_feats, p=2, dim=-1), F.normalize(graph_feats, p=2, dim=-1)
             text_feats_all, graph_feats_all = pl_concat_all_gather(text_feats), pl_concat_all_gather(graph_feats) # shape = [B * num_gpus, D]
             sim_g2t, sim_t2g, loss_gtc = self.contrast_global(graph_feats, text_feats, graph_feats_all, text_feats_all, return_sim=True)
 
