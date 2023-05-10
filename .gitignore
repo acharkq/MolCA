@@ -3,3 +3,6 @@ __pycache__
 test*
 data
 log*
+*.sh.e*
+*.sh.o*
+.d*

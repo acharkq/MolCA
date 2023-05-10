@@ -7,7 +7,9 @@ from model.blip2_stage1 import Blip2Stage1
 from data_provider.pretrain_datamodule import GINPretrainDataModule
 import warnings
 from pytorch_lightning import strategies
+import os
 
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 ## for A5000 gpus
@@ -32,9 +34,7 @@ def main(args):
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
-                                         strategy=strategy
-                                        #  strategy='deepspeed_stage_2',
-                                         # accumulate_grad_batches=8,
+                                         strategy=strategy,
                                          )
 
     trainer.fit(model, datamodule=dm)
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
     parser = GINPretrainDataModule.add_argparse_args(parser)  # add data args
 
-    parser.set_defaults(batch_size=16,
+    parser.set_defaults(batch_size=24,
                         accelerator='gpu',
                         devices='0,1,2,3',
                         precision=16,

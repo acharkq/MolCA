@@ -63,7 +63,7 @@ class Blip2Qformer(Blip2Base):
         gin_num_layers,
         gin_hidden_dim,
         gin_drop_ratio,
-        freeze_gnn=True,
+        tune_gnn=False,
         num_query_token=32,
         cross_attention_freq=2,
         embed_dim=256,
@@ -76,7 +76,8 @@ class Blip2Qformer(Blip2Base):
         self.tokenizer = self.init_tokenizer()
 
         self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
-        if freeze_gnn:
+        self.tune_gnn = tune_gnn
+        if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
                 param.requires_grad = False
             self.graph_encoder = self.graph_encoder.eval()
@@ -356,7 +357,8 @@ class Blip2Qformer(Blip2Base):
             graph, graph2, text, mask, text2, mask2 = batch
             batch_node, batch_mask = self.graph_encoder(graph)
             batch_node2, batch_mask2 = self.graph_encoder(graph2)
-            batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
+            if not self.tune_gnn:
+                batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
             assert batch_node2.shape[0] == batch_node.shape[0]
             batch_size = batch_node.shape[0]
 
@@ -398,7 +400,8 @@ class Blip2Qformer(Blip2Base):
         else:
             graph, text, mask = batch
             batch_node, batch_mask = self.graph_encoder(graph)
-            batch_node = batch_node.detach()
+            if not self.tune_gnn:
+                batch_node = batch_node.detach()
             batch_size = batch_node.shape[0]
 
             batch_node = self.ln_graph(batch_node)

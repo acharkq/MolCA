@@ -146,12 +146,22 @@ def main(args):
             l_sim_q2t = (l_graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [N, D, 1]; output shape = [B, N, num_qs]
             l_sim_g2t, _ = l_sim_q2t.max(-1) # shape = [B, N]
             sim_g2t.append(l_sim_g2t)
-        sim_g2t = torch.cat(sim_g2t, dim=0) # shape = [N, N]
+        sim_g2t = torch.cat(sim_g2t, dim=0).cpu() # shape = [N, N]
         
-        sorted_ids = torch.argsort(sim_g2t, descending=True)
-        rank_g2t = (sorted_ids == torch.arange(N, device=device).reshape(-1, 1)).int().argmax(dim=-1)
-        sorted_ids = torch.argsort(sim_g2t.T, descending=True)
-        rank_t2g = (sorted_ids == torch.arange(N, device=device).reshape(-1, 1)).int().argmax(dim=-1)
+        rank_g2t = []
+        for i in range(0, N, B):
+            sorted_ids = torch.argsort(sim_g2t[i:i+B].to(device), descending=True)
+            rank_g2t.append((sorted_ids == torch.arange(i,i+B, device=device).reshape(-1, 1)).int().argmax(dim=-1))
+        rank_g2t = torch.cat(rank_g2t, dim=0)
+        
+        rank_t2g = []
+        for i in range(0, N, B):
+            sorted_ids = torch.argsort(sim_g2t.T[i:i+B].to(device), descending=True)
+            rank_t2g.append((sorted_ids == torch.arange(i,i+B, device=device).reshape(-1, 1)).int().argmax(dim=-1))
+        rank_t2g = torch.cat(rank_t2g, dim=0)
+        
+        # sorted_ids = torch.argsort(sim_g2t.T, descending=True)
+        # rank_t2g = (sorted_ids == torch.arange(N, device=device).reshape(-1, 1)).int().argmax(dim=-1)
         
         g2t_acc = float((rank_g2t == 0).float().mean())
         g2t_rec20 = float((rank_g2t < 20).float().mean())
@@ -256,7 +266,7 @@ def parse_args(parser=argparse.ArgumentParser()):
     # parser.add_argument("--train_dataset", default='data/kv_data/train', type=str)
     # parser.add_argument("--val_dataset", default='data/kv_data/dev', type=str)
     # parser.add_argument("--test_dataset", default='our_data/PubChemDataset_v2/test', type=str)
-    parser.add_argument("--test_dataset", default='data/PubChemDataset/PubChem-50k/test', type=str)
+    parser.add_argument("--test_dataset", default='../GraphTextPretrain/data/PubChemDataset/PubChem-50k/test', type=str)
     parser.add_argument("--weight_decay", default=0, type=float)
     parser.add_argument("--lr", default=5e-5, type=float)
     parser.add_argument("--warmup", default=0.2, type=float)
@@ -273,11 +283,16 @@ def parse_args(parser=argparse.ArgumentParser()):
 
 if __name__ == "__main__":
     args = parse_args()
-    ckt_path = './all_checkpoints/cl_gtm_lm_50k'
-    paths = list(Path(ckt_path).glob('*'))
-    paths.sort()
     args.log_path = './logs/log.txt'
-    for p in paths:
-        args.init_checkpoint = str(p)
+    path = Path(args.init_checkpoint)
+    if not path.exists():
+        raise FileNotFoundError()
+    if path.is_dir:
+        paths = list(Path(path).glob('*'))
+        paths.sort()
+        for p in paths:
+            args.init_checkpoint = str(p)
+            main(args)
+            torch.cuda.empty_cache()
+    else:
         main(args)
-        torch.cuda.empty_cache()

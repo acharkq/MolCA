@@ -9,7 +9,7 @@ class Blip2Stage1(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.freeze_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
+        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
     
         self.save_hyperparameters(args)
         
@@ -63,7 +63,7 @@ class Blip2Stage1(pl.LightningModule):
         parser.add_argument('--gin_hidden_dim', type=int, default=300)
         parser.add_argument('--gin_num_layers', type=int, default=5)
         parser.add_argument('--drop_ratio', type=float, default=0.0)
-        parser.add_argument('--freeze_gnn', action='store_true', default=True)
+        parser.add_argument('--tune_gnn', action='store_true', default=False)
         # Bert
         parser.add_argument('--bert_hidden_dim', type=int, default=768, help='')
         parser.add_argument('--bert_name', type=str, default='scibert')

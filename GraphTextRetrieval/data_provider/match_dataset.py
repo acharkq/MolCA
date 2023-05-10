@@ -20,7 +20,7 @@ class GINMatchDataset(Dataset):
         self.text_name_list.sort()
         self.smiles_name_list = os.listdir(root + 'smiles/')
         self.smiles_name_list.sort()
-        self.tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+        self.tokenizer = BertTokenizer.from_pretrained('../GraphTextPretrain/bert_pretrained/')
 
     def get(self, idx):
         return self.__getitem__(idx)
