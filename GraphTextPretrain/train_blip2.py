@@ -8,6 +8,7 @@ from data_provider.pretrain_datamodule import GINPretrainDataModule
 import warnings
 from pytorch_lightning import strategies
 import os
+from pytorch_lightning.loggers import CSVLogger
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
@@ -32,9 +33,11 @@ def main(args):
     callbacks = []
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    logger = CSVLogger(save_dir='./')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
                                          strategy=strategy,
+                                         logger=logger
                                          )
 
     trainer.fit(model, datamodule=dm)
