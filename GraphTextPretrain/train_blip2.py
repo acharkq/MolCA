@@ -32,7 +32,7 @@ def main(args):
 
     callbacks = []
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
-    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=True)
     logger = CSVLogger(save_dir='./')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
@@ -50,8 +50,8 @@ if __name__ == '__main__':
     # GPU
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
-    parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=True)
-    parser.add_argument('--lm', action='store_true', help='use graph-text matching or not', default=True)
+    parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=False)
+    parser.add_argument('--lm', action='store_true', help='use graph-text matching or not', default=False)
 
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     parser.set_defaults(batch_size=24,
                         accelerator='gpu',
                         devices='0,1,2,3',
-                        precision=16,
+                        precision=32,
                         max_epochs=100,
                         num_workers=8,
                         declip=True,

@@ -32,10 +32,10 @@ class Blip2Stage1(pl.LightningModule):
         batch_size = batch[-1].size(0)
         blip2_loss = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
-        self.log("val_loss_gtc", blip2_loss.loss_itc.item(), batch_size=batch_size, sync_dist=True)
-        self.log("val_loss_gtm", blip2_loss.loss_itm.item(), batch_size=batch_size, sync_dist=True)
-        self.log("val_loss_lm", blip2_loss.loss_lm.item(), batch_size=batch_size, sync_dist=True)
-        self.log("val_loss", blip2_loss.loss.item(), batch_size=batch_size, sync_dist=True)
+        self.log("val_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True)
+        self.log("val_loss_gtm", float(blip2_loss.loss_itm), batch_size=batch_size, sync_dist=True)
+        self.log("val_loss_lm", float(blip2_loss.loss_lm), batch_size=batch_size, sync_dist=True)
+        self.log("val_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
     
@@ -47,10 +47,10 @@ class Blip2Stage1(pl.LightningModule):
         batch_size = batch[-1].size(0)
         blip2_loss = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
-        self.log("train_loss_gtc", blip2_loss.loss_itc.item(), batch_size=batch_size, sync_dist=True)
-        self.log("train_loss_gtm", blip2_loss.loss_itm.item(), batch_size=batch_size, sync_dist=True)
-        self.log("train_loss_lm", blip2_loss.loss_lm.item(), batch_size=batch_size, sync_dist=True)
-        self.log("train_loss", blip2_loss.loss.item(), batch_size=batch_size, sync_dist=True)
+        self.log("train_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True)
+        self.log("train_loss_gtm", float(blip2_loss.loss_itm), batch_size=batch_size, sync_dist=True)
+        self.log("train_loss_lm", float(blip2_loss.loss_lm), batch_size=batch_size, sync_dist=True)
+        self.log("train_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
 
