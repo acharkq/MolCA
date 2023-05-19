@@ -35,10 +35,6 @@ class GINPretrainDataset(Dataset):
             # load and process graph
             graph_path = os.path.join(self.root, 'graph', graph_name)
             data_graph = torch.load(graph_path)
-            # try:
-            #     data_graph_aug = self.augment(data_graph, self.graph_aug)
-            # except:
-            #     exit()
             data_graph_aug = self.augment(data_graph, self.graph_aug)
             # load and process text
             text_path = os.path.join(self.root, 'text', text_name)

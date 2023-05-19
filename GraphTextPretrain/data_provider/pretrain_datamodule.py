@@ -51,5 +51,5 @@ class GINPretrainDataModule(LightningDataModule):
             drop_last=False,
             persistent_workers=True
         )
-        # print('len(val_dataloader)', len(loader))
+
         return loader

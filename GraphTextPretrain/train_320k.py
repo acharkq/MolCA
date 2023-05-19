@@ -10,9 +10,9 @@ import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
-from pytorch_lightning.loggers import TensorBoardLogger
+# from pytorch_lightning.loggers import TensorBoardLogger
 from model.contrastive_gin import GINSimclr
-from torch_geometric.data import LightningDataset
+# from torch_geometric.data import LightningDataset
 from data_provider.pretrain_datamodule import GINPretrainDataModule
 from data_provider.pretrain_dataset import GINPretrainDataset
 
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     parser = GINSimclr.add_model_specific_args(parser)  # add model args
     parser = GINPretrainDataModule.add_argparse_args(parser)  # add data args
 
-    parser.set_defaults(batch_size=48,
+    parser.set_defaults(batch_size=64,
                         accelerator='gpu',
                         gpus='0,1,2,3',
                         # precision=16,

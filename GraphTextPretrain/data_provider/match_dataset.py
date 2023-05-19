@@ -12,7 +12,7 @@ class GINMatchDataset(Dataset):
     def __init__(self, root, args):
         super(GINMatchDataset, self).__init__(root)
         self.root = root
-        self.graph_aug = args.graph_aug
+        self.graph_aug = 'noaug'
         self.text_max_len = args.text_max_len
         self.graph_name_list = os.listdir(root+'graph/')
         self.graph_name_list.sort()
@@ -20,7 +20,7 @@ class GINMatchDataset(Dataset):
         self.text_name_list.sort()
         self.smiles_name_list = os.listdir(root + 'smiles/')
         self.smiles_name_list.sort()
-        self.tokenizer = BertTokenizer.from_pretrained('../GraphTextPretrain/bert_pretrained/')
+        self.tokenizer = BertTokenizer.from_pretrained('./bert_pretrained/')
         self.use_smiles = args.use_smiles
 
     def get(self, idx):

@@ -16,7 +16,10 @@ class Blip2Stage1(pl.LightningModule):
         if isinstance(args, dict):
             args = AttrDict(**args)
         self.args = args
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
+        if not hasattr(args, 'use_bn'):
+            args.use_bn = False
+            
+        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
     
         self.save_hyperparameters(args)
 

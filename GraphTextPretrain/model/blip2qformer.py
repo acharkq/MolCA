@@ -23,7 +23,26 @@ from lavis.models.blip_models.blip_outputs import BlipOutput, BlipOutputFeatures
 import pytorch_lightning as pl
 from lavis.common.dist_utils import download_cached_file, is_dist_avail_and_initialized
 from model.blip2 import Blip2Base
+from pytorch_lightning.utilities import distributed
 
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    # if use distributed training
+    if not is_dist_avail_and_initialized():
+        return tensor
+
+    tensors_gather = [
+        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
+    ]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    print('running here')
+    return output
 
 @torch.no_grad()
 def pl_concat_all_gather(tensor):
@@ -35,7 +54,7 @@ def pl_concat_all_gather(tensor):
     if not is_dist_avail_and_initialized():
         return tensor
 
-    tensors_gather = pl.utilities.distributed.gather_all_tensors(tensor)
+    tensors_gather = distributed.gather_all_tensors(tensor)
     output = torch.cat(tensors_gather, dim=0)
     return output
 
@@ -67,6 +86,7 @@ class Blip2Qformer(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         embed_dim=256,
+        use_bn=False,
     ):
         super().__init__()
         self.gtm = gtm
@@ -75,7 +95,7 @@ class Blip2Qformer(Blip2Base):
         
         self.tokenizer = self.init_tokenizer()
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
         self.tune_gnn = tune_gnn
         if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
@@ -197,7 +217,7 @@ class Blip2Qformer(Blip2Base):
             assert batch_node2.shape[0] == batch_node.shape[0]
             batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node), self.ln_graph(batch_node2)
+            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
 
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
@@ -238,7 +258,7 @@ class Blip2Qformer(Blip2Base):
             batch_node = batch_node.detach()
             batch_size = batch_node.shape[0]
 
-            batch_node = self.ln_graph(batch_node)
+            batch_node = self.ln_graph(batch_node, batch_mask)
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
                 query_embeds=query_tokens,
@@ -362,7 +382,7 @@ class Blip2Qformer(Blip2Base):
             assert batch_node2.shape[0] == batch_node.shape[0]
             batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node), self.ln_graph(batch_node2)
+            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
 
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
@@ -404,7 +424,7 @@ class Blip2Qformer(Blip2Base):
                 batch_node = batch_node.detach()
             batch_size = batch_node.shape[0]
 
-            batch_node = self.ln_graph(batch_node)
+            batch_node = self.ln_graph(batch_node, batch_mask)
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
                 query_embeds=query_tokens,
@@ -519,6 +539,27 @@ class Blip2Qformer(Blip2Base):
             loss_itm=loss_gtm,
             loss_lm=loss_lm,
         )
+    
+    def graph_forward(self, graph):
+        batch_node, batch_mask = self.graph_encoder(graph)
+        batch_node = self.ln_graph(batch_node, batch_mask)
+        query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=batch_node,
+            encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
+            use_cache=False,
+            return_dict=True,
+        )
+        graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
+        graph_feats = F.normalize(graph_feats, p=2, dim=-1)
+        return graph_feats
+
+    def text_forward(self, text, mask):
+        text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
+        text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :] )
+        text_feats = F.normalize(text_feats, dim=-1, p=2)
+        return text_feats
     
     @torch.no_grad()
     def generate(

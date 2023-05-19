@@ -3,13 +3,23 @@ from model.blip2qformer import Blip2Qformer
 import pytorch_lightning as pl
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
+from tqdm import tqdm
+
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
 
 
 class Blip2Stage1(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
+        if isinstance(args, dict):
+            args = AttrDict(**args)
+        
         self.args = args
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
+        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
     
         self.save_hyperparameters(args)
         
@@ -39,6 +49,41 @@ class Blip2Stage1(pl.LightningModule):
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
     
+    def validation_epoch_end(self, outputs) -> None:
+        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
+            return
+        if self.trainer.global_rank == 0:
+            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total = \
+                eval_retrieval_inbatch(self.blip2qformer, self.val_match_loader, self.device)
+            self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("val_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
+            
+            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
+                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
+            self.log("val_fullset_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("val_fullset_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("val_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("val_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
+
+            ## for test set
+            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total = \
+                eval_retrieval_inbatch(self.blip2qformer, self.test_match_loader, self.device)
+            self.log("test_inbatch_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("test_inbatch_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("test_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("test_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
+            
+            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
+                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
+            self.log("test_fullset_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("test_fullset_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
+            del graph_rep_total, text_rep_total
+        # self.trainer.strategy.barrier()
+
     def training_step(self, batch, batch_idx):
         # if self.trainer.global_step < self.args.warmup_steps:
         #     warmup_lr_schedule(self.trainer.optimizers[0], self.trainer.global_step, self.args.warmup_steps, self.args.warmup_lr, self.args.init_lr)
@@ -78,4 +123,92 @@ class Blip2Stage1(pl.LightningModule):
         parser.add_argument('--warmup_steps', type=int, default=100, help='optimizer warmup steps')
         parser.add_argument('--lr_decay_rate', type=float, default=0.9, help='optimizer lr decay rate')
         parser.add_argument('--scheduler', type=str, default='linear_warmup_cosine_lr', help='type of scheduler') # or linear_warmup_step_lr
+        parser.add_argument('--init_checkpoint', type=str, default='')
+        parser.add_argument('--retrieval_eval_epoch', type=int, default=10)
         return parent_parser
+
+
+@torch.no_grad()
+def eval_retrieval_inbatch(model, dataloader, device=None):
+    assert isinstance(model, Blip2Qformer)
+    model.eval()
+    g2t_acc = 0
+    t2g_acc = 0
+    g2t_rec20 = 0
+    t2g_rec20 = 0
+    allcnt = 0
+    graph_rep_total = []    
+    text_rep_total = []
+    for batch in tqdm(dataloader):
+        aug, text, mask = batch
+        aug = aug.to(device)
+        text = text.to(device)
+        mask = mask.to(device)
+        graph_rep = model.graph_forward(aug) # shape = [B, num_qs, D]
+        text_rep = model.text_forward(text, mask) # shape = [B, D]
+
+        sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
+        sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
+
+        B = sim_g2t.shape[0]
+        sorted_ids = sim_g2t.argsort(descending=True).cpu()
+        g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
+        t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        # argm1 = torch.argmax(sim_g2t, axis=1)
+        # argm2 = torch.argmax(sim_g2t.T, axis=1)
+
+        g2t_acc += float((g2t_rank == 0).sum())
+        t2g_acc += float((t2g_rank == 0).sum())
+        g2t_rec20 += float((g2t_rank < 20).sum())
+        t2g_rec20 += float((t2g_rank < 20).sum())
+        
+        allcnt += B
+
+        graph_rep_total.append(graph_rep.cpu())
+        text_rep_total.append(text_rep.cpu())
+
+    graph_rep_total = torch.cat(graph_rep_total, dim=0)
+    text_rep_total = torch.cat(text_rep_total, dim=0)
+
+    g2t_acc = round(g2t_acc/allcnt * 100, 2)
+    t2g_acc = round(t2g_acc/allcnt * 100, 2)
+    g2t_rec20 = round(g2t_rec20 / allcnt * 100, 2)
+    t2g_rec20 = round(t2g_rec20 / allcnt * 100, 2)
+    return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total
+
+
+@torch.no_grad()
+def eval_retrieval_fullset(graph_rep, text_rep, device):    
+    N = graph_rep.shape[0]
+    B = 8
+    text_rep = text_rep.to(device)
+    sim_g2t = []
+    for i in tqdm(range(0, N, B)):
+        l_graph_rep = graph_rep[i:i+B].to(device)
+        l_sim_q2t = (l_graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [N, D, 1]; output shape = [B, N, num_qs]
+        l_sim_g2t, _ = l_sim_q2t.max(-1) # shape = [B, N]
+        sim_g2t.append(l_sim_g2t)
+    sim_g2t = torch.cat(sim_g2t, dim=0).cpu() # shape = [N, N]
+    
+    rank_g2t = []
+    for i in range(0, N, B):
+        sorted_ids = torch.argsort(sim_g2t[i:i+B].to(device), descending=True)
+        rank_g2t.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0], device=device).reshape(-1, 1)).int().argmax(dim=-1))
+    rank_g2t = torch.cat(rank_g2t, dim=0)
+    
+    rank_t2g = []
+    for i in range(0, N, B):
+        sorted_ids = torch.argsort(sim_g2t.T[i:i+B].to(device), descending=True)
+        rank_t2g.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0], device=device).reshape(-1, 1)).int().argmax(dim=-1))
+    rank_t2g = torch.cat(rank_t2g, dim=0)
+    
+    g2t_acc = float((rank_g2t == 0).float().mean())
+    g2t_rec20 = float((rank_g2t < 20).float().mean())
+    t2g_acc = float((rank_t2g == 0).float().mean())
+    t2g_rec20 = float((rank_t2g < 20).float().mean())
+    g2t_acc = round(g2t_acc * 100, 2)
+    g2t_rec20 = round(g2t_rec20 * 100, 2)
+    t2g_acc = round(t2g_acc * 100, 2)
+    t2g_rec20 = round(t2g_rec20 * 100, 2)
+    return g2t_acc, g2t_rec20, t2g_acc, t2g_rec20

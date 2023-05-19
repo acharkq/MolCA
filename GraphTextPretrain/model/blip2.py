@@ -24,7 +24,7 @@ from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 from lavis.models.eva_vit import create_eva_vit_g
 from lavis.models.clip_vit import create_clip_vit_L
 from transformers import BertTokenizer
-
+from model.mask_bn import MaskedBatchNorm1d
 from model.gin_model import GNN
 
 import pytorch_lightning as pl
@@ -87,7 +87,7 @@ class Blip2Base(BaseModel):
 
     @classmethod
     def init_graph_encoder(
-        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio):
+        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn):
         graph_encoder = GNN(
             num_layer=gin_num_layers,
             emb_dim=gin_hidden_dim,
@@ -101,7 +101,11 @@ class Blip2Base(BaseModel):
             print(missing_keys)
             print(unexpected_keys)
         
-        ln_graph = LayerNorm(graph_encoder.num_features)
+        if use_bn:
+            ln_graph = MaskedBatchNorm1d(graph_encoder.num_features)
+        else:
+            ln_graph = LayerNorm(graph_encoder.num_features)
+            
         return graph_encoder, ln_graph
 
     def load_from_pretrained(self, url_or_filename):
@@ -134,7 +138,7 @@ def disabled_train(self, mode=True):
 class LayerNorm(nn.LayerNorm):
     """Subclass torch's LayerNorm to handle fp16."""
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask=None):
         orig_type = x.dtype
         ret = super().forward(x.type(torch.float32))
         return ret.type(orig_type)

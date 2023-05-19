@@ -67,6 +67,7 @@ class Blip2Qformer(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         embed_dim=256,
+        use_bn=False,
     ):
         super().__init__()
         self.gtm = gtm
@@ -75,7 +76,7 @@ class Blip2Qformer(Blip2Base):
         
         self.tokenizer = self.init_tokenizer()
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
         self.tune_gnn = tune_gnn
         if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
@@ -194,12 +195,11 @@ class Blip2Qformer(Blip2Base):
             graph, graph2, text, mask, text2, mask2 = batch
             batch_node, batch_mask = self.graph_encoder(graph)
             batch_node2, batch_mask2 = self.graph_encoder(graph2)
-            if not self.tune_gnn:
-                batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
+            batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
             assert batch_node2.shape[0] == batch_node.shape[0]
             batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node), self.ln_graph(batch_node2)
+            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
 
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
@@ -237,12 +237,10 @@ class Blip2Qformer(Blip2Base):
         else:
             graph, text, mask = batch
             batch_node, batch_mask = self.graph_encoder(graph)
-            if not self.tune_gnn:
-                batch_node = batch_node.detach()
             batch_node = batch_node.detach()
             batch_size = batch_node.shape[0]
 
-            batch_node = self.ln_graph(batch_node)
+            batch_node = self.ln_graph(batch_node, batch_mask)
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
                 query_embeds=query_tokens,
@@ -355,7 +353,7 @@ class Blip2Qformer(Blip2Base):
 
     def graph_forward(self, graph):
         batch_node, batch_mask = self.graph_encoder(graph)
-        batch_node = self.ln_graph(batch_node)
+        batch_node = self.ln_graph(batch_node, batch_mask)
         query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
         query_output = self.Qformer.bert(
             query_embeds=query_tokens,
@@ -381,11 +379,12 @@ class Blip2Qformer(Blip2Base):
             graph, graph2, text, mask, text2, mask2 = batch
             batch_node, batch_mask = self.graph_encoder(graph)
             batch_node2, batch_mask2 = self.graph_encoder(graph2)
-            batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
+            if not self.tune_gnn:
+                batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
             assert batch_node2.shape[0] == batch_node.shape[0]
             batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node), self.ln_graph(batch_node2)
+            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
 
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
@@ -423,10 +422,11 @@ class Blip2Qformer(Blip2Base):
         else:
             graph, text, mask = batch
             batch_node, batch_mask = self.graph_encoder(graph)
-            batch_node = batch_node.detach()
+            if not self.tune_gnn:
+                batch_node = batch_node.detach()
             batch_size = batch_node.shape[0]
 
-            batch_node = self.ln_graph(batch_node)
+            batch_node = self.ln_graph(batch_node, batch_mask)
             query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
             query_output = self.Qformer.bert(
                 query_embeds=query_tokens,

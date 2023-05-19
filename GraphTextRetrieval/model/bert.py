@@ -168,11 +168,11 @@ class MMEncoder(nn.Module):
 
         if pretrain == 'scibert':
             print("bert load scibert")
-            config = BertConfig.from_pretrained('bert_pretrained/')
+            config = BertConfig.from_pretrained('../GraphTextPretrain/bert_pretrained/')
             if gtm or lm:
                 config.add_cross_attention = True
                 config.graph_dim = graph_dim
-            self.main_model = MMBert.from_pretrained('bert_pretrained/', config=config)
+            self.main_model = MMBert.from_pretrained('../GraphTextPretrain/bert_pretrained/', config=config)
             if lm:
                 # bert_model = MMBert.from_pretrained('bert_pretrained/', config=config)
                 self.decoder = MMBertLMHeadModel(config=config)
@@ -205,7 +205,7 @@ class MMEncoder(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def extend_tokenizer(self):
-        tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+        tokenizer = BertTokenizer.from_pretrained('../GraphTextPretrain/bert_pretrained/')
         tokenizer.add_special_tokens({'bos_token': '[DEC]'})
         tokenizer.add_special_tokens({'additional_special_tokens': ['[ENC]']})
         tokenizer.enc_token_id = tokenizer.additional_special_tokens_ids[0]
@@ -914,7 +914,7 @@ class MMBertLMHeadModel(BertPreTrainedModel):
         super().__init__(config)
 
         # self.bert = MMBert(config, add_pooling_layer=False)
-        self.bert = MMBert.from_pretrained('bert_pretrained/', config=config)
+        self.bert = MMBert.from_pretrained('../GraphTextPretrain/bert_pretrained/', config=config)
         # self.bert = bert_model
         self.cls = BertOnlyMLMHead(config)
 

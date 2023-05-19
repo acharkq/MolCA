@@ -75,7 +75,7 @@ class GINSimclr(pl.LightningModule):
         )
 
         self.text_encoder = MMEncoder(pretrain=self.pretrain, gtm=gtm, lm=lm, graph_dim=gin_hidden_dim)
-
+        self.graph_encoder.cat_grep = False
         self.graph_proj_head = nn.Sequential(
           nn.Linear(self.gin_hidden_dim, self.gin_hidden_dim),
           nn.ReLU(inplace=True),

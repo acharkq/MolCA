@@ -75,6 +75,7 @@ class GINSimclr(pl.LightningModule):
             drop_ratio=self.drop_ratio,
             JK='last',
         )
+        self.graph_encoder.cat_grep = False
         ckpt = torch.load('gin_pretrained/graphcl_80.pth', map_location=torch.device('cpu'))
         missing_keys, unexpected_keys = self.graph_encoder.load_state_dict(ckpt, strict=False)
         if len(missing_keys) or len(unexpected_keys):
