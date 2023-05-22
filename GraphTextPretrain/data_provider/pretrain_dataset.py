@@ -42,7 +42,7 @@ class GINPretrainDataset(Dataset):
             count = 0
             for line in open(text_path, 'r', encoding='utf-8'):
                 count += 1
-                text_list.append(line)
+                text_list.append(line.strip('\n') + '\n')
                 if count > 100:
                     break
             if len(text_list) < 2:
@@ -64,7 +64,7 @@ class GINPretrainDataset(Dataset):
             count = 0
             for line in open(text_path, 'r', encoding='utf-8'):
                 count += 1
-                text_list.append(line)
+                text_list.append(line.strip('\n') + '\n')
                 if count > 100:
                     break
             text_sample = random.sample(text_list, 1)

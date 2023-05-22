@@ -1,4 +1,5 @@
 import os
+import torch
 import argparse
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
@@ -13,7 +14,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 ## for A5000 gpus
-# torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
+torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
 def main(args):

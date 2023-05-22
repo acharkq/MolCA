@@ -102,7 +102,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--bert_hidden_dim', type=int, default=768, help='')
         parser.add_argument('--bert_name', type=str, default='scibert')
         parser.add_argument('--cross_attention_freq', type=int, default=2)
-        parser.add_argument('--num_query_token', type=int, default=32)
+        parser.add_argument('--num_query_token', type=int, default=8)
         # OPT
         parser.add_argument('--opt_model', type=str, default="facebook/galactica-1.3b")
         parser.add_argument('--prompt', type=str, default='')

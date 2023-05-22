@@ -34,10 +34,10 @@ class MoleculeCaption(Dataset):
         count = 0
         for line in open(text_path, 'r', encoding='utf-8'):
             count += 1
-            text_list.append(line)
+            text_list.append(line.strip('\n'))
             if count > 100:
                 break
-        text = '\n'.join(text_list)
+        text = ' '.join(text_list)
         return data_graph, text
 
     

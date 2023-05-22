@@ -55,8 +55,7 @@ class GINMatchDataset(Dataset):
 
     def __getitem__(self, index):
         graph_name, text_name, smiles_name = self.graph_name_list[index], self.text_name_list[index], self.smiles_name_list[index]
-        assert graph_name.strip('.pt').strip('graph_') == text_name.strip('.txt').strip('text_') == smiles_name.strip('.txt').strip('smiles_'), print(graph_name, text_name, smiles_name)
-        
+        assert graph_name[len('graph_'):-len('.pt')] == text_name[len('text_'):-len('.txt')] == smiles_name[len('smiles_'):-len('.txt')], print(graph_name, text_name, smiles_name)
 
         graph_path = os.path.join(self.root, 'graph', graph_name)
         data_graph = torch.load(graph_path)
@@ -69,8 +68,8 @@ class GINMatchDataset(Dataset):
             count = 0
             for line in open(text_path, 'r', encoding='utf-8'):
                 count += 1
-                line.strip('\n')
-                text += line
+                line = line.strip('\n')
+                text += f' {line}'
                 if count > 1:
                     break
             text += '. '
@@ -79,8 +78,8 @@ class GINMatchDataset(Dataset):
         count = 0
         for line in open(text_path, 'r', encoding='utf-8'):
             count += 1
-            line.strip('\n')
-            text += line
+            line = line.strip('\n')
+            text += f' {line}'
             if count > 100:
                 break
 
