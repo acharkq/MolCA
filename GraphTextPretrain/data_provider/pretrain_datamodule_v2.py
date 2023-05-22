@@ -72,7 +72,7 @@ class GINPretrainDataModule_v2(LightningDataModule):
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("Data module")
         parser.add_argument('--num_workers', type=int, default=8)
-        parser.add_argument('--batch_size', type=int, default=256)
+        parser.add_argument('--batch_size', type=int, default=64)
         parser.add_argument('--match_batch_size', type=int, default=64)
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset/PubChem-320k')

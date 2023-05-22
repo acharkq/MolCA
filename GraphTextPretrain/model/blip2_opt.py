@@ -27,7 +27,6 @@ opt_model_list = [
     "facebook/galactica-125m",
     "facebook/galactica-1.3b",
     "facebook/galactica-6.7b",
-    "facebook/galactica-6.7b",
     "facebook/galactica-30b",
 ]
 

@@ -15,7 +15,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 ## for A5000 gpus
-# torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
+torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
 def main(args):
@@ -23,7 +23,7 @@ def main(args):
 
     # model
     if args.init_checkpoint:
-        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint)
+        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint, device=args.device)
         print(f"loading model from {args.init_checkpoint}")
     else:
         model = Blip2Stage1(args)
@@ -43,15 +43,20 @@ def main(args):
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=find_unused_parameters)
-    logger = CSVLogger(save_dir='./')
+    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
                                          strategy=strategy,
                                          logger=logger,
                                         #  limit_train_batches=100,
                                          )
-    
-    trainer.fit(model, datamodule=dm)
+    if args.mode == 'train':
+        trainer.fit(model, datamodule=dm)
+    elif args.mode == 'eval':
+        trainer.fit_loop.epoch_progress.current.completed = 49 ## avoid 
+        trainer.validate(model, datamodule=dm)
+    else:
+        raise NotImplementedError()
 
 
 if __name__ == '__main__':
@@ -64,12 +69,13 @@ if __name__ == '__main__':
     parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=False)
     parser.add_argument('--lm', action='store_true', help='use language modeling or not', default=False)
     parser.add_argument('--use_bn', action='store_true', default=False)
+    parser.add_argument('--mode', type=str, default='train')
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
     parser = GINPretrainDataModule_v2.add_model_specific_args(parser)
     parser.set_defaults(accelerator='gpu',
                         devices='0,1,2,3',
-                        precision=32,
+                        precision=16,
                         max_epochs=50,
                         check_val_every_n_epoch=1)
     args = parser.parse_args()
