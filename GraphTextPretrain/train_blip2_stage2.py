@@ -14,7 +14,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 ## for A5000 gpus
-torch.set_float32_matmul_precision('high') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
+torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
 def main(args):
@@ -40,7 +40,7 @@ def main(args):
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
-    logger = CSVLogger(save_dir='./')
+    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
                                          strategy=strategy,
@@ -48,8 +48,13 @@ def main(args):
                                         #  limit_train_batches=20,
                                          )
     
-    trainer.fit(model, datamodule=dm)
-
+    if args.mode == 'train':
+        trainer.fit(model, datamodule=dm)
+    elif args.mode == 'eval':
+        trainer.fit_loop.epoch_progress.current.completed = 9 ## avoid 
+        trainer.validate(model, datamodule=dm)
+    else:
+        raise NotImplementedError()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -57,6 +62,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
     parser.add_argument('--use_bn', action='store_true', default=False)
+    parser.add_argument('--mode', type=str, default='train')
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = PretrainStage2DataModule.add_model_specific_args(parser)
@@ -64,6 +70,7 @@ if __name__ == '__main__':
                         devices='0,1,2,3',
                         precision=16,
                         max_epochs=10,
+                        accumulate_grad_batches=1,
                         check_val_every_n_epoch=1)
     args = parser.parse_args()
     
