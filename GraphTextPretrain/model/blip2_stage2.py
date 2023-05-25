@@ -6,7 +6,12 @@ import pytorch_lightning as pl
 import torch.nn as nn
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
-
+from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.meteor_score import meteor_score
+from rouge_score import rouge_scorer
+from tqdm import tqdm
+import numpy as np
+import torch.distributed as dist
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -45,8 +50,19 @@ class Blip2Stage2(pl.LightningModule):
         if isinstance(args, dict):
             args = AttrDict(**args)
         
+        if not hasattr(args, 'num_beams'):
+            args.num_beams = 5
+            args.max_len = 128
+            args.min_len = 8
+            args.caption_eval_epoch = 10
+
         self.args = args
+        self.num_beams = args.num_beams
+        self.max_len = args.max_len
+        self.min_len = args.min_len
         self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.opt_model, args.prompt)
+        
+        self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
 
     def load_from_stage1_checkpoint(self, path):
@@ -71,7 +87,7 @@ class Blip2Stage2(pl.LightningModule):
         return optimizer
 
     @torch.no_grad()
-    def validation_step(self, batch, batch_idx):
+    def validation_step_old(self, batch, batch_idx):
         batch_size = batch[-1].size(0)
         loss = self.blip2opt(batch)
         ###============== Overall Loss ===================###
@@ -79,6 +95,56 @@ class Blip2Stage2(pl.LightningModule):
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
         return loss['loss']
 
+    def validation_epoch_end(self, outputs):
+        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
+            return
+        
+        for o in outputs:
+            assert len(o) == 2
+
+        list_predictions, list_targets = zip(*outputs)
+        predictions = [i for ii in list_predictions for i in ii]
+        targets = [i for ii in list_targets for i in ii]
+
+        all_predictions = [None for _ in range(self.trainer.world_size)]
+        all_targets = [None for _ in range(self.trainer.world_size)]
+
+        dist.all_gather_object(all_predictions, predictions)
+        dist.all_gather_object(all_targets, targets)
+        if self.global_rank == 0:
+            all_predictions = [i for ii in all_predictions for i in ii]
+            all_targets = [i for ii in all_targets for i in ii]
+
+            ## fixme: I am not sure if the max length is the same as previous experiments
+            bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len) 
+            self.log("bleu2", bleu2, sync_dist=False)
+            self.log("bleu4", bleu4, sync_dist=False)
+            self.log("rouge_1", rouge_1, sync_dist=False)
+            self.log("rouge_2", rouge_2, sync_dist=False)
+            self.log("rouge_l", rouge_l, sync_dist=False)
+            self.log("meteor_score", meteor_score, sync_dist=False)
+
+    @torch.no_grad()
+    def validation_step(self, batch, batch_idx):
+        batch_size = batch[-2].size(0)
+        loss = self.blip2opt(batch)
+        ###============== Overall Loss ===================###
+        self.log("loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+
+        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
+            return
+        ###============== Captioning Results ===================###
+        samples = {'graphs': batch[0], }
+        predictions = self.blip2opt.generate(
+            samples, 
+            use_nucleus_sampling=False,
+            num_beams=self.num_beams,
+            max_length=self.max_len,
+            min_length=self.min_len
+        )
+        return predictions, batch[-1]
+    
     def training_step(self, batch, batch_idx):
         self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
 
@@ -105,7 +171,11 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--num_query_token', type=int, default=8)
         # OPT
         parser.add_argument('--opt_model', type=str, default="facebook/galactica-1.3b")
-        parser.add_argument('--prompt', type=str, default='')
+        parser.add_argument('--prompt', type=str, default='a molecule of ')
+        parser.add_argument('--num_beams', type=int, default=5)
+        parser.add_argument('--max_len', type=int, default=128)
+        parser.add_argument('--min_len', type=int, default=8)
+
         # optimization
         parser.add_argument('--weight_decay', type=float, default=0.05, help='optimizer weight decay')
         parser.add_argument('--init_lr', type=float, default=1e-4, help='optimizer init learning rate')
@@ -116,4 +186,57 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--scheduler', type=str, default='linear_warmup_cosine_lr', help='type of scheduler') # or linear_warmup_step_lr
         parser.add_argument('--stage1_path', type=str, default='')
         parser.add_argument('--init_checkpoint', type=str, default='')
+        parser.add_argument('--caption_eval_epoch', type=int, default=10)
         return parent_parser
+
+
+def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
+    meteor_scores = []
+    references = []
+    hypotheses = []
+    for gt, out in tqdm(zip(targets, predictions)):
+        gt_tokens = tokenizer.tokenize(gt, truncation=True, max_length=text_trunc_length,
+                                            padding='max_length')
+        gt_tokens = list(filter(('[PAD]').__ne__, gt_tokens))
+        gt_tokens = list(filter(('[CLS]').__ne__, gt_tokens))
+        gt_tokens = list(filter(('[SEP]').__ne__, gt_tokens))
+
+        out_tokens = tokenizer.tokenize(out, truncation=True, max_length=text_trunc_length,
+                                            padding='max_length')
+        out_tokens = list(filter(('[PAD]').__ne__, out_tokens))
+        out_tokens = list(filter(('[CLS]').__ne__, out_tokens))
+        out_tokens = list(filter(('[SEP]').__ne__, out_tokens))
+
+        references.append([gt_tokens])
+        hypotheses.append(out_tokens)
+
+        mscore = meteor_score([gt_tokens], out_tokens)
+        meteor_scores.append(mscore)
+
+    bleu2 = corpus_bleu(references, hypotheses, weights=(.5,.5))
+    bleu4 = corpus_bleu(references, hypotheses, weights=(.25,.25,.25,.25))
+
+    print('BLEU-2 score:', bleu2)
+    print('BLEU-4 score:', bleu4)
+    _meteor_score = np.mean(meteor_scores)
+    print('Average Meteor score:', _meteor_score)
+
+    scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'])
+
+    rouge_scores = []
+
+    references = []
+    hypotheses = []
+
+    for gt, out in tqdm(zip(targets, predictions)):
+        rs = scorer.score(out, gt)
+        rouge_scores.append(rs)
+
+    print('ROUGE score:')
+    rouge_1 = np.mean([rs['rouge1'].fmeasure for rs in rouge_scores])
+    rouge_2 = np.mean([rs['rouge2'].fmeasure for rs in rouge_scores])
+    rouge_l = np.mean([rs['rougeL'].fmeasure for rs in rouge_scores])
+    print('rouge1:', rouge_1)
+    print('rouge2:', rouge_2)
+    print('rougeL:', rouge_l)
+    return bleu2, bleu4, rouge_1, rouge_2, rouge_l, _meteor_score

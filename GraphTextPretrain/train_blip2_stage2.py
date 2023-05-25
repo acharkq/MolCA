@@ -21,7 +21,7 @@ def main(args):
     pl.seed_everything(args.seed)
     # model
     if args.init_checkpoint:
-        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint)
+        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False)
         print(f"loaded stage2 model from {args.init_checkpoint}")
     else:
         model = Blip2Stage2(args)
@@ -46,6 +46,7 @@ def main(args):
                                          strategy=strategy,
                                          logger=logger,
                                         #  limit_train_batches=20,
+                                         limit_val_batches=20,
                                          )
     
     if args.mode == 'train':

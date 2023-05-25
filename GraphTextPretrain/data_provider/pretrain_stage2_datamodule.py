@@ -16,7 +16,7 @@ class MyCollater:
         
     def __call__(self, batch):
         graphs, texts = zip(*batch)
-        batch_graph = self.collater(graphs)
+        graphs = self.collater(graphs)
         tokens = self.tokenizer(text=texts,
                                 truncation=True,
                                 padding='longest',
@@ -26,7 +26,7 @@ class MyCollater:
                                 return_attention_mask=True)
         input_ids = tokens['input_ids']
         attention_mask = tokens['attention_mask']
-        return batch_graph, input_ids, attention_mask
+        return graphs, input_ids, attention_mask, texts
     
     
 class PretrainStage2DataModule(LightningDataModule):
