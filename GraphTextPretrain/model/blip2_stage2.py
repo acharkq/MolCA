@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Mapping, Union
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 import torch
@@ -6,6 +7,7 @@ import pytorch_lightning as pl
 import torch.nn as nn
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
+import json
 from nltk.translate.bleu_score import corpus_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
@@ -114,7 +116,7 @@ class Blip2Stage2(pl.LightningModule):
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
-
+            self.save_predictions(all_predictions, all_targets)
             ## fixme: I am not sure if the max length is the same as previous experiments
             bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
                 caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len) 
@@ -124,6 +126,13 @@ class Blip2Stage2(pl.LightningModule):
             self.log("rouge_2", rouge_2, sync_dist=False)
             self.log("rouge_l", rouge_l, sync_dist=False)
             self.log("meteor_score", meteor_score, sync_dist=False)
+
+    def save_predictions(self, predictions, targets):
+        assert len(predictions) == len(targets)
+        with open(os.path.join(self.logger.log_dir, 'predictions.txt'), 'w') as f:
+            for p, t in zip(predictions, targets):
+                line = {'prediction': p, 'target': t}
+                f.write(json.dumps(line, ensure_ascii=False) + '\n')
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):

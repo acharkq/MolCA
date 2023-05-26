@@ -46,7 +46,7 @@ def main(args):
                                          strategy=strategy,
                                          logger=logger,
                                         #  limit_train_batches=20,
-                                         limit_val_batches=20,
+                                        #  limit_val_batches=5,
                                          )
     
     if args.mode == 'train':
