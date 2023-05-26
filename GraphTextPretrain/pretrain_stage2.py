@@ -33,7 +33,7 @@ def main(args):
     # data
     # dm = GINPretrainDataModule.from_argparse_args(args)
     dm = PretrainStage2DataModule(args.num_workers, args.batch_size, args.root, args.text_max_len, args)
-    dm.tokenizer = model.blip2opt.opt_tokenizer
+    dm.init_tokenizer(model.blip2opt.opt_tokenizer)
 
     callbacks = []
     ## fixme save only used parameters

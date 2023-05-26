@@ -30,6 +30,16 @@ opt_model_list = [
     "facebook/galactica-30b",
 ]
 
+def mask_by_len(input, lens, fill_value=0):
+    '''
+    input: shape = [N, D]
+    lens: shape = [N]
+    '''
+    mask = torch.arange(input.shape[1], device=input.device).reshape(1, -1)
+    mask = mask < lens.reshape(-1, 1)
+    input[mask] = fill_value
+    return input
+
 # @registry.register_model("blip2")
 # @registry.register_model("blip2_feature_extractor")
 class Blip2OPT(Blip2Base):
@@ -97,11 +107,11 @@ class Blip2OPT(Blip2Base):
         
         ## fixme: no prompt yet
         self.prompt = prompt
-        prompt_tokens = self.opt_tokenizer(self.prompt, return_tensors="pt")
-        self.prompt_length = prompt_tokens.attention_mask.sum(1)
+        # prompt_tokens = self.opt_tokenizer(self.prompt, return_tensors="pt")
+        # self.prompt_length = prompt_tokens.attention_mask.sum(1)
 
     def forward(self, batch):
-        graphs, text, mask, _ = batch
+        graphs, text, mask, _, prompt_lens = batch
         graph_embeds, graph_masks = self.graph_encoder(graphs)
         if not self.tune_gnn:
             graph_embeds = graph_embeds.detach()
@@ -120,7 +130,8 @@ class Blip2OPT(Blip2Base):
             text == self.opt_tokenizer.pad_token_id, -100
         )
         if self.prompt:
-            targets[:, : self.prompt_length] = -100  # do not apply loss to the prompt
+            targets = mask_by_len(targets, prompt_lens, -100) # do not apply loss to the prompt
+            # targets[:, : self.prompt_length] = -100  # do not apply loss to the prompt
         
         empty_targets = (
             torch.ones(atts_opt.size(), dtype=torch.long).to(device).fill_(-100)
@@ -168,6 +179,8 @@ class Blip2OPT(Blip2Base):
             captions (list): A list of strings of length batch_size * num_captions.
         """
         graphs = samples['graphs']
+        prompt = samples['prompt']
+        prompt_lens = samples['prompt_lens']
         with self.maybe_autocast():
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             graph_embeds = self.ln_graph(graph_embeds)
@@ -184,12 +197,12 @@ class Blip2OPT(Blip2Base):
             inputs_opt = self.opt_proj(query_output.last_hidden_state)
             atts_opt = torch.ones(inputs_opt.size()[:-1], dtype=torch.long, device=device)
 
-            if "prompt" in samples.keys():
-                prompt = samples["prompt"]
-            else:
-                prompt = self.prompt
+            # if "prompt" in samples.keys():
+            #     prompt = samples["prompt"]
+            # else:
+            #     prompt = self.prompt
 
-            prompt = [prompt] * graph_embeds.size(0)
+            # prompt = [prompt] * graph_embeds.size(0)
 
             opt_tokens = self.opt_tokenizer(
                 prompt,

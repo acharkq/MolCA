@@ -22,7 +22,12 @@ class GINPretrainDataModule_v2(LightningDataModule):
         self.batch_size = batch_size
         self.match_batch_size = args.match_batch_size
         self.num_workers = num_workers
-        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, declip)
+        if root.find('PubChemDataset_v4') > 0:
+            print('Loading MoLa dataset')
+            self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, declip)
+        else:
+            print('Loading old veresion dataset')
+            self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, declip)
         self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, declip)
         self.val_dataset_match = GINMatchDataset(root + '/valid/', args).shuffle()
         self.test_dataset_match = GINMatchDataset(root + '/test/', args).shuffle()

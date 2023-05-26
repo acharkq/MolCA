@@ -4,7 +4,6 @@ import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
 from model.blip2_stage1 import Blip2Stage1
-from data_provider.pretrain_datamodule import GINPretrainDataModule
 from data_provider.pretrain_datamodule_v2 import GINPretrainDataModule_v2
 import warnings
 from pytorch_lightning import strategies
@@ -62,7 +61,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--filename', type=str, default="cl_gtm_lm_50k")
+    parser.add_argument('--filename', type=str, default="stage1_test")
     # GPU
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
