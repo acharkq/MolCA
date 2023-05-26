@@ -1,6 +1,6 @@
 {
 
-python train_blip2.py --root 'data/PubChemDataset/PubChem-320k' --gtm --lm --devices '5,6'  --filename default
+python pretrain_stage1.py --root 'data/PubChemDataset_v4' --gtm --lm --devices '6,7'  --filename mola_dataset
 
 exit
 }
