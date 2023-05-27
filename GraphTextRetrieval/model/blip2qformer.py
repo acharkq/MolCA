@@ -58,7 +58,6 @@ class Blip2Qformer(Blip2Base):
         gtm,
         lm,
         bert_name,
-        declip,
         temperature,
         gin_num_layers,
         gin_hidden_dim,
@@ -72,7 +71,6 @@ class Blip2Qformer(Blip2Base):
         super().__init__()
         self.gtm = gtm
         self.lm = lm
-        self.declip = declip
         
         self.tokenizer = self.init_tokenizer()
 
@@ -191,68 +189,24 @@ class Blip2Qformer(Blip2Base):
     def forward_old(self, batch):
         ## v1: not gather results from all gpus
         ###============== Image-text Contrastive ===================###
-        if self.declip:
-            graph, graph2, text, mask, text2, mask2 = batch
-            batch_node, batch_mask = self.graph_encoder(graph)
-            batch_node2, batch_mask2 = self.graph_encoder(graph2)
-            batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
-            assert batch_node2.shape[0] == batch_node.shape[0]
-            batch_size = batch_node.shape[0]
+        graph, text, mask = batch
+        batch_node, batch_mask = self.graph_encoder(graph)
+        batch_node = batch_node.detach()
+        batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
-
-            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node,
-                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            query_output2 = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node2,
-                encoder_attention_mask=batch_mask2, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
-            graph_feats2 = self.graph_proj(query_output2.last_hidden_state) # shape = [B, num_q, D]
-            
-            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
-            text_output2 = self.Qformer.bert(text2, attention_mask=mask2, return_dict=True) # shape = [B, n_max, D]
-            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :] )
-            text_feats2 = self.text_proj(text_output2.last_hidden_state[:, 0, :])
-            
-            sim_g2t, sim_t2g, loss11 = self.contrast(graph_feats, text_feats, return_sim=True)
-            loss12 = self.contrast(graph_feats, text_feats2)
-            loss21 = self.contrast(graph_feats2, text_feats)
-            loss22 = self.contrast(graph_feats2, text_feats2)
-
-            # if self.graph_self:
-            #     _, _, loss_graph_self = self.contrast(graph_feats, graph_feats2)
-            #     loss_cl = (loss11 + loss12 + loss21 + loss22 + loss_graph_self) / 5.0
-            # else:
-            loss_gtc = (loss11 + loss12 + loss21 + loss22) / 4.0
-        else:
-            graph, text, mask = batch
-            batch_node, batch_mask = self.graph_encoder(graph)
-            batch_node = batch_node.detach()
-            batch_size = batch_node.shape[0]
-
-            batch_node = self.ln_graph(batch_node, batch_mask)
-            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node,
-                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
-            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
-            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
-            sim_g2t, sim_t2g, loss_gtc = self.contrast(graph_feats, text_feats, return_sim=True)
+        batch_node = self.ln_graph(batch_node, batch_mask)
+        query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=batch_node,
+            encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
+            use_cache=True,
+            return_dict=True,
+        )
+        graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
+        text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
+        text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
+        sim_g2t, sim_t2g, loss_gtc = self.contrast(graph_feats, text_feats, return_sim=True)
 
 
         ###============== Image-text Matching ===================###
@@ -375,73 +329,28 @@ class Blip2Qformer(Blip2Base):
     def forward(self, batch):
         ## v2: gather results from all gpus
         ###============== Image-text Contrastive ===================###
-        if self.declip:
-            graph, graph2, text, mask, text2, mask2 = batch
-            batch_node, batch_mask = self.graph_encoder(graph)
-            batch_node2, batch_mask2 = self.graph_encoder(graph2)
-            if not self.tune_gnn:
-                batch_node, batch_node2 = batch_node.detach(), batch_node2.detach()
-            assert batch_node2.shape[0] == batch_node.shape[0]
-            batch_size = batch_node.shape[0]
+        graph, text, mask = batch
+        batch_node, batch_mask = self.graph_encoder(graph)
+        if not self.tune_gnn:
+            batch_node = batch_node.detach()
+        batch_size = batch_node.shape[0]
 
-            batch_node, batch_node2 = self.ln_graph(batch_node, batch_mask), self.ln_graph(batch_node2, batch_mask2)
-
-            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node,
-                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            query_output2 = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node2,
-                encoder_attention_mask=batch_mask2, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
-            graph_feats2 = self.graph_proj(query_output2.last_hidden_state) # shape = [B, num_q, D]
-            
-            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
-            text_output2 = self.Qformer.bert(text2, attention_mask=mask2, return_dict=True) # shape = [B, n_max, D]
-            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :] )
-            text_feats2 = self.text_proj(text_output2.last_hidden_state[:, 0, :])
-            
-            graph_feats, graph_feats2 = F.normalize(graph_feats, p=2, dim=-1), F.normalize(graph_feats2, p=2, dim=-1)
-            text_feats, text_feats2 = F.normalize(text_feats, p=2, dim=-1), F.normalize(text_feats2, p=2, dim=-1)
-            text_feats_all, text_feats_all2 = pl_concat_all_gather(text_feats), pl_concat_all_gather(text_feats2) # shape = [B * num_gpus, D]
-            graph_feats_all, graph_feats_all2 = pl_concat_all_gather(graph_feats), pl_concat_all_gather(graph_feats2) # shape = [B * num_gpus, num_qs, D]
-
-            sim_g2t, sim_t2g, loss11 = self.contrast_global(graph_feats, text_feats, graph_feats_all, text_feats_all, return_sim=True)
-            loss12 = self.contrast_global(graph_feats, text_feats2, graph_feats_all, text_feats_all2)
-            loss21 = self.contrast_global(graph_feats2, text_feats, graph_feats_all2, text_feats_all)
-            loss22 = self.contrast_global(graph_feats2, text_feats2, graph_feats_all2, text_feats_all2)
-            loss_gtc = (loss11 + loss12 + loss21 + loss22) / 4.0
-        else:
-            graph, text, mask = batch
-            batch_node, batch_mask = self.graph_encoder(graph)
-            if not self.tune_gnn:
-                batch_node = batch_node.detach()
-            batch_size = batch_node.shape[0]
-
-            batch_node = self.ln_graph(batch_node, batch_mask)
-            query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=batch_node,
-                encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
-                use_cache=True,
-                return_dict=True,
-            )
-            graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
-            text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
-            text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
-            
-            text_feats, graph_feats = F.normalize(text_feats, p=2, dim=-1), F.normalize(graph_feats, p=2, dim=-1)
-            text_feats_all, graph_feats_all = pl_concat_all_gather(text_feats), pl_concat_all_gather(graph_feats) # shape = [B * num_gpus, D]
-            sim_g2t, sim_t2g, loss_gtc = self.contrast_global(graph_feats, text_feats, graph_feats_all, text_feats_all, return_sim=True)
+        batch_node = self.ln_graph(batch_node, batch_mask)
+        query_tokens = self.query_tokens.expand(batch_node.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=batch_node,
+            encoder_attention_mask=batch_mask, # fixme: check whether this mask is correct
+            use_cache=True,
+            return_dict=True,
+        )
+        graph_feats = self.graph_proj(query_output.last_hidden_state) # shape = [B, num_q, D]
+        text_output = self.Qformer.bert(text, attention_mask=mask, return_dict=True) # shape = [B, n_max, D]
+        text_feats = self.text_proj(text_output.last_hidden_state[:, 0, :])
+        
+        text_feats, graph_feats = F.normalize(text_feats, p=2, dim=-1), F.normalize(graph_feats, p=2, dim=-1)
+        text_feats_all, graph_feats_all = pl_concat_all_gather(text_feats), pl_concat_all_gather(graph_feats) # shape = [B * num_gpus, D]
+        sim_g2t, sim_t2g, loss_gtc = self.contrast_global(graph_feats, text_feats, graph_feats_all, text_feats_all, return_sim=True)
 
 
         ###============== Image-text Matching ===================###

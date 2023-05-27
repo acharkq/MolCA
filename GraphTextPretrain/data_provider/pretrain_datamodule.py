@@ -15,18 +15,15 @@ class GINPretrainDataModule(LightningDataModule):
         root: str = 'data/',
         text_max_len: int = 128,
         graph_aug: str = 'dnodes',
-        declip: bool = False,
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, declip)
-        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, declip)
+        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug)
+        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug)
 
-    # def setup(self, stage: str = None):
-    #     self.train_dataset = self.dataset
 
     def train_dataloader(self):
         loader = torch_geometric.loader.DataLoader(
@@ -38,7 +35,6 @@ class GINPretrainDataModule(LightningDataModule):
             drop_last=True,
             persistent_workers=True
         )
-        # print('len(train_dataloader)', len(loader))
         return loader
 
     def val_dataloader(self):

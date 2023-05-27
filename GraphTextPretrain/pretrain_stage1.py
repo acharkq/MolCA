@@ -30,8 +30,7 @@ def main(args):
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     # data
-    # dm = GINPretrainDataModule.from_argparse_args(args)
-    dm = GINPretrainDataModule_v2(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args.declip, args)
+    dm = GINPretrainDataModule_v2(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
     dm.train_dataset.tokenizer = model.blip2qformer.tokenizer
     dm.val_dataset.tokenizer = model.blip2qformer.tokenizer
     model.val_match_loader = dm.val_match_loader

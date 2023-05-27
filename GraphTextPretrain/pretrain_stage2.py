@@ -31,7 +31,6 @@ def main(args):
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     # data
-    # dm = GINPretrainDataModule.from_argparse_args(args)
     dm = PretrainStage2DataModule(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, model.blip2opt.opt_tokenizer, args)
 
     callbacks = []
@@ -53,8 +52,6 @@ def main(args):
         trainer.fit(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
     elif args.mode == 'eval':
-        # trainer.fit_loop.epoch_progress.current.completed = 9 ## avoid 
-        # trainer.validate(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
     else:
         raise NotImplementedError()

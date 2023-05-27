@@ -15,7 +15,6 @@ class GINPretrainDataModule_v2(LightningDataModule):
         root: str = 'data/',
         text_max_len: int = 128,
         graph_aug: str = 'dnodes',
-        declip: bool = False,
         args=None,
     ):
         super().__init__()
@@ -24,11 +23,11 @@ class GINPretrainDataModule_v2(LightningDataModule):
         self.num_workers = num_workers
         if root.find('PubChemDataset_v4') > 0:
             print('Loading MoLa dataset')
-            self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, declip)
+            self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, args.text_aug)
         else:
             print('Loading old veresion dataset')
-            self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, declip)
-        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, declip)
+            self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug)
+        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug)
         self.val_dataset_match = GINMatchDataset(root + '/valid/', args).shuffle()
         self.test_dataset_match = GINMatchDataset(root + '/test/', args).shuffle()
         self.val_match_loader = torch_geometric.loader.DataLoader(self.val_dataset_match, 
@@ -83,6 +82,6 @@ class GINPretrainDataModule_v2(LightningDataModule):
         parser.add_argument('--root', type=str, default='data/PubChemDataset/PubChem-320k')
         parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--graph_aug', type=str, default='dnodes')
-        parser.add_argument('--declip', action='store_true', default=False)
+        parser.add_argument('--text_aug', action='store_true', default=False)
         return parent_parser
     

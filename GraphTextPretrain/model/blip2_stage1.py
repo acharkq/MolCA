@@ -22,7 +22,7 @@ class Blip2Stage1(pl.LightningModule):
         if not hasattr(args, 'rerank_cand_num'):
             args.rerank_cand_num = 128
         self.rerank_cand_num = args.rerank_cand_num
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
+        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
     
         self.save_hyperparameters(args)
         
@@ -36,9 +36,6 @@ class Blip2Stage1(pl.LightningModule):
         else:
             raise NotImplementedError()
         return optimizer
-
-    # def on_train_epoch_start(self) -> None:
-        # step_lr_schedule(self.trainer.optimizers[0], self.trainer.current_epoch, self.args.init_lr, self.args.min_lr, self.args.lr_decay_rate)
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):

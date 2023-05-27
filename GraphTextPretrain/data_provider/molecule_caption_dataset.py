@@ -29,24 +29,6 @@ class MoleculeCaption(Dataset):
     def __len__(self):
         return len(self.graph_name_list)
 
-    # def __getitem__(self, index):
-    #     graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
-    #     # load and process graph
-    #     graph_path = os.path.join(self.root, 'graph', graph_name)
-    #     data_graph = torch.load(graph_path)
-    #     # load and process text
-    #     text_path = os.path.join(self.root, 'text', text_name)
-        
-    #     text_list = []
-    #     count = 0
-    #     for line in open(text_path, 'r', encoding='utf-8'):
-    #         count += 1
-    #         text_list.append(line.strip('\n'))
-    #         if count > 100:
-    #             break
-    #     text = ' '.join(text_list) + '\n'
-    #     return data_graph, text
-
     def __getitem__(self, index):
         graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
         smiles_name = self.smiles_name_list[index]

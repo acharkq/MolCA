@@ -8,16 +8,16 @@ import os
 import random
 
 class GINPretrainDataset(Dataset):
-    def __init__(self, root, text_max_len, graph_aug, declip):
+    def __init__(self, root, text_max_len, graph_aug, text_aug):
         super(GINPretrainDataset, self).__init__(root)
         self.root = root
         self.graph_aug = graph_aug
+        self.text_aug = text_aug
         self.text_max_len = text_max_len
         self.graph_name_list = os.listdir(root+'graph/')
         self.graph_name_list.sort()
         self.text_name_list = os.listdir(root+'text/')
         self.text_name_list.sort()
-        self.declip = declip
         self.tokenizer = None
 
     def get(self, index):
@@ -30,36 +30,13 @@ class GINPretrainDataset(Dataset):
         return len(self.graph_name_list)
 
     def __getitem__(self, index):
-        if self.declip:
-            graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
-            # load and process graph
-            graph_path = os.path.join(self.root, 'graph', graph_name)
-            data_graph = torch.load(graph_path)
-            data_graph_aug = self.augment(data_graph, self.graph_aug)
-            # load and process text
-            text_path = os.path.join(self.root, 'text', text_name)
-            text_list = []
-            count = 0
-            for line in open(text_path, 'r', encoding='utf-8'):
-                count += 1
-                text_list.append(line.strip('\n') + '\n')
-                if count > 100:
-                    break
-            if len(text_list) < 2:
-                two_text_list = [text_list[0], text_list[0]]
-            else:
-                two_text_list = random.sample(text_list, 2)
-            text1, mask1 = self.tokenizer_text(two_text_list[0])
-            text2, mask2 = self.tokenizer_text(two_text_list[1])
-
-            return data_graph, data_graph_aug, text1.squeeze(0), mask1.squeeze(0), text2.squeeze(0), mask2.squeeze(0)
-        else:
-            graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
-            # load and process graph
-            graph_path = os.path.join(self.root, 'graph', graph_name)
-            data_graph = torch.load(graph_path)
-            # load and process text
-            text_path = os.path.join(self.root, 'text', text_name)
+        graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
+        # load and process graph
+        graph_path = os.path.join(self.root, 'graph', graph_name)
+        data_graph = torch.load(graph_path)
+        # load and process text
+        text_path = os.path.join(self.root, 'text', text_name)
+        if self.text_aug:
             text_list = []
             count = 0
             for line in open(text_path, 'r', encoding='utf-8'):
@@ -70,7 +47,13 @@ class GINPretrainDataset(Dataset):
             text_sample = random.sample(text_list, 1)
             text_list.clear()
             text, mask = self.tokenizer_text(text_sample[0])
-            return data_graph, text.squeeze(0), mask.squeeze(0)
+        else:
+            with open(text_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                lines = [line.strip() for line in lines if line.strip()]
+            text = ' '.join(lines) + '\n'
+            text, mask = self.tokenizer_text(text_sample[0])
+        return data_graph, text.squeeze(0), mask.squeeze(0)
 
 
     def augment(self, data, graph_aug):

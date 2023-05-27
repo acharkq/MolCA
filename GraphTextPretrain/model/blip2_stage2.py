@@ -94,12 +94,6 @@ class Blip2Stage2(pl.LightningModule):
         return optimizer
 
     def test_epoch_end(self, outputs):
-        # if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
-        #     return
-        
-        # for o in outputs:
-        #     assert len(o) == 2
-
         list_predictions, list_targets = zip(*outputs)
         predictions = [i for ii in list_predictions for i in ii]
         targets = [i for ii in list_targets for i in ii]
@@ -132,8 +126,6 @@ class Blip2Stage2(pl.LightningModule):
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        # if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
-        #     return
         graphs, prompt_tokens, texts = batch
         ###============== Captioning Results ===================###
         samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
