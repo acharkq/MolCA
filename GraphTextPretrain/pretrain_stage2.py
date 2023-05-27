@@ -25,7 +25,7 @@ def main(args):
         print(f"loaded stage2 model from {args.init_checkpoint}")
     else:
         model = Blip2Stage2(args)
-        # model.load_from_stage1_checkpoint(args.stage1_path)
+        model.load_from_stage1_checkpoint(args.stage1_path)
         print(f"loaded stage1 model from {args.stage1_path}")
         
     print('total params:', sum(p.numel() for p in model.parameters()))
@@ -45,15 +45,15 @@ def main(args):
                                          callbacks=callbacks,
                                          strategy=strategy,
                                          logger=logger,
-                                         limit_train_batches=20,
-                                         limit_test_batches=100,
+                                        #  limit_train_batches=20,
+                                        #  limit_test_batches=100,
                                          )
     
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
     elif args.mode == 'eval':
-        trainer.fit_loop.epoch_progress.current.completed = 9 ## avoid 
+        # trainer.fit_loop.epoch_progress.current.completed = 9 ## avoid 
         # trainer.validate(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
     else:

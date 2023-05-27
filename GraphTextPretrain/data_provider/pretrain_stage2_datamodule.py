@@ -139,7 +139,7 @@ class PretrainStage2DataModule(LightningDataModule):
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("Data module")
         parser.add_argument('--num_workers', type=int, default=4)
-        parser.add_argument('--batch_size', type=int, default=64)
+        parser.add_argument('--batch_size', type=int, default=32)
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)

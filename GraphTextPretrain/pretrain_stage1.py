@@ -22,7 +22,7 @@ def main(args):
 
     # model
     if args.init_checkpoint:
-        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint, device=args.device)
+        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint, device=args.devices)
         print(f"loading model from {args.init_checkpoint}")
     else:
         model = Blip2Stage1(args)

@@ -82,7 +82,7 @@ class GINMatchDataset(Dataset):
             text += f' {line}'
             if count > 100:
                 break
-
+        text += '\n'
         # para-level
         text, mask = self.tokenizer_text(text)
 

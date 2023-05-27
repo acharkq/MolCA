@@ -19,6 +19,8 @@ class Blip2Stage1(pl.LightningModule):
             args = AttrDict(**args)
         
         self.args = args
+        if not hasattr(args, 'rerank_cand_num'):
+            args.rerank_cand_num = 128
         self.rerank_cand_num = args.rerank_cand_num
         self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
     
@@ -176,7 +178,7 @@ class Blip2Stage1(pl.LightningModule):
             self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
 
             g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
-                eval_retrieval_fullset_v2(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.device)
+                eval_retrieval_fullset_v2(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.rerank_cand_num, self.device)
             self.log("rerank_test_fullset_g2t_acc", g2t_acc, sync_dist=False)
             self.log("rerank_test_fullset_t2g_acc", t2g_acc, sync_dist=False)
             self.log("rerank_test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
