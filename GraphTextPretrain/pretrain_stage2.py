@@ -32,12 +32,12 @@ def main(args):
 
     # data
     # dm = GINPretrainDataModule.from_argparse_args(args)
-    dm = PretrainStage2DataModule(args.num_workers, args.batch_size, args.root, args.text_max_len, args)
-    dm.init_tokenizer(model.blip2opt.opt_tokenizer)
+    dm = PretrainStage2DataModule(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, model.blip2opt.opt_tokenizer, args)
 
     callbacks = []
     ## fixme save only used parameters
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
+    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", save_last=True))
     
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
@@ -45,15 +45,17 @@ def main(args):
                                          callbacks=callbacks,
                                          strategy=strategy,
                                          logger=logger,
-                                        #  limit_train_batches=20,
-                                        #  limit_val_batches=5,
+                                         limit_train_batches=20,
+                                         limit_test_batches=100,
                                          )
     
-    if args.mode == 'train':
+    if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
+        trainer.test(model, datamodule=dm)
     elif args.mode == 'eval':
         trainer.fit_loop.epoch_progress.current.completed = 9 ## avoid 
-        trainer.validate(model, datamodule=dm)
+        # trainer.validate(model, datamodule=dm)
+        trainer.test(model, datamodule=dm)
     else:
         raise NotImplementedError()
 
@@ -63,7 +65,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
     parser.add_argument('--use_bn', action='store_true', default=False)
-    parser.add_argument('--mode', type=str, default='train')
+    parser.add_argument('--mode', type=str, default='pretrain')
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = PretrainStage2DataModule.add_model_specific_args(parser)

@@ -1,10 +1,10 @@
 {
+filename='test';
 
-# python train_blip2_stage2.py --devices '4,5' --filename gal13 --stage1_path all_checkpoints/full_nodelip_q8_warup1e6/epoch=49-step=101450.ckpt --opt_model facebook/galactica-1.3b --batch_size 32
+# pretrain on stage1 checkpoint
+python pretrain_stage2.py --devices '2,3' --filename "pt_${filename}" --init_checkpoint "all_checkpoints/gal13/epoch=9-step=40580.ckpt" --opt_model facebook/galactica-1.3b --batch_size 8 --accumulate_grad_batches 4 --max_epochs 10 --mode pretrain;
 
-# python train_blip2_stage2.py --devices '6,7' --filename gal67 --stage1_path all_checkpoints/full_nodelip_q8_warup1e6/epoch=49-step=101450.ckpt --opt_model facebook/galactica-6.7b --batch_size 32
-
-
-python pretrain_stage2.py --devices '6,7' --filename gal30 --stage1_path all_checkpoints/full_nodelip_q8_warup1e6/epoch=49-step=101450.ckpt --opt_model facebook/galactica-30b --batch_size 8 --accumulate_grad_batches 4
+# fine-tune on the pretrain's checkpoint
+python pretrain_stage2.py --devices '2,3' --filename "ft_${filename}" --init_model "all_checkpoints/pt_${filename}/last.ckpt" --opt_model facebook/galactica-1.3b --batch_size 8 --accumulate_grad_batches 4 --max_epochs 5 --mode ft --scheduler None;
 exit
 }

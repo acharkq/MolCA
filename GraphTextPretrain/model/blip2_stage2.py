@@ -57,8 +57,10 @@ class Blip2Stage2(pl.LightningModule):
             args.max_len = 128
             args.min_len = 8
             args.caption_eval_epoch = 10
+            args.nucleus_sampling = True
 
         self.args = args
+        self.nucleus_sampling = args.nucleus_sampling
         self.num_beams = args.num_beams
         self.max_len = args.max_len
         self.min_len = args.min_len
@@ -80,29 +82,23 @@ class Blip2Stage2(pl.LightningModule):
     
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
+        # warmup_steps = min(self.args.warmup_steps, len(self.train_dataloader))
         if self.args.scheduler == 'linear_warmup_cosine_lr':
             self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.warmup_steps, self.args.warmup_lr)
         elif self.args.scheduler == 'linear_warmup_step_lr':
             self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, self.args.warmup_steps)
+        elif self.args.scheduler == 'None':
+            self.scheduler = None
         else:
             raise NotImplementedError()
         return optimizer
 
-    @torch.no_grad()
-    def validation_step_old(self, batch, batch_idx):
-        batch_size = batch[-1].size(0)
-        loss = self.blip2opt(batch)
-        ###============== Overall Loss ===================###
-        self.log("loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-        self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
-        return loss['loss']
-
-    def validation_epoch_end(self, outputs):
-        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
-            return
+    def test_epoch_end(self, outputs):
+        # if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
+        #     return
         
-        for o in outputs:
-            assert len(o) == 2
+        # for o in outputs:
+        #     assert len(o) == 2
 
         list_predictions, list_targets = zip(*outputs)
         predictions = [i for ii in list_predictions for i in ii]
@@ -135,27 +131,33 @@ class Blip2Stage2(pl.LightningModule):
                 f.write(json.dumps(line, ensure_ascii=False) + '\n')
 
     @torch.no_grad()
+    def test_step(self, batch, batch_idx):
+        # if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
+        #     return
+        graphs, prompt_tokens, texts = batch
+        ###============== Captioning Results ===================###
+        samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
+        predictions = self.blip2opt.generate(
+            samples, 
+            use_nucleus_sampling=self.nucleus_sampling,
+            num_beams=self.num_beams,
+            max_length=self.max_len * 2,
+            min_length=self.min_len
+        )
+        return predictions, texts
+
+    @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        batch_size = batch[-2].size(0)
+        _, _, prompt_lens = batch
+        batch_size = prompt_lens.shape[0]
         loss = self.blip2opt(batch)
         ###============== Overall Loss ===================###
         self.log("loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+        return loss['loss']
 
-        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.caption_eval_epoch != 0:
-            return
-        ###============== Captioning Results ===================###
-        samples = {'graphs': batch[0], }
-        predictions = self.blip2opt.generate(
-            samples, 
-            use_nucleus_sampling=False,
-            num_beams=self.num_beams,
-            max_length=self.max_len,
-            min_length=self.min_len
-        )
-        return predictions, batch[-1]
-    
     def training_step(self, batch, batch_idx):
-        self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
+        if self.scheduler:
+            self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
 
         batch_size = batch[-1].size(0)
         loss = self.blip2opt(batch)
@@ -180,8 +182,9 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--num_query_token', type=int, default=8)
         # OPT
         parser.add_argument('--opt_model', type=str, default="facebook/galactica-1.3b")
-        parser.add_argument('--prompt', type=str, default='a molecule of ')
+        # parser.add_argument('--prompt', type=str, default='a molecule of ')
         parser.add_argument('--num_beams', type=int, default=5)
+        parser.add_argument('--nucleus_sampling', action='store_true', default=True)
         parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--min_len', type=int, default=8)
 

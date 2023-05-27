@@ -9,65 +9,105 @@ from torch_geometric.loader.dataloader import Collater
 from data_provider.molecule_caption_dataset import MoleculeCaption
 
 
-class MyCollater:
+class TrainCollater:
     def __init__(self, tokenizer, text_max_len):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         
     def __call__(self, batch):
-        graphs, texts, prompt_lens = zip(*batch)
-        prompt_lens = torch.LongTensor(prompt_lens)
+        graphs, texts, smiles_prompt = zip(*batch)
+
+        ## deal with prompt
+        prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
+        prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
+
+        ## concate text and prompt
+        texts = [prompt + text for prompt, text in zip(smiles_prompt, texts)]
+
 
         graphs = self.collater(graphs)
-        tokens = self.tokenizer(text=texts,
+        text_tokens = self.tokenizer(text=texts,
                                 truncation=True,
                                 padding='longest',
                                 add_special_tokens=True,
                                 max_length=self.text_max_len,
                                 return_tensors='pt',
                                 return_attention_mask=True)
-        input_ids = tokens['input_ids']
-        attention_mask = tokens['attention_mask']
-        return graphs, input_ids, attention_mask, texts, prompt_lens
+        return graphs, text_tokens, prompt_lens
+
+
+class InferenceCollater:
+    def __init__(self, tokenizer, text_max_len):
+        self.text_max_len = text_max_len
+        self.tokenizer = tokenizer
+        self.collater = Collater([], [])
+        
+    def __call__(self, batch):
+        graphs, texts, smiles_prompt = zip(*batch)
+
+        ## deal with prompt
+        prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
+
+        graphs = self.collater(graphs)
+        return graphs, prompt_tokens, texts
     
-    
+
 class PretrainStage2DataModule(LightningDataModule):
     def __init__(
         self,
+        mode: str = 'pretrain',
         num_workers: int = 0,
         batch_size: int = 256,
         root: str = 'data/',
         text_max_len: int = 128,
+        tokenizer=None,
         args=None,
     ):
         super().__init__()
+        self.mode = mode
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.train_dataset = MoleculeCaption(root+'/train/', text_max_len, self.prompt)
+        self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt)
+        self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
         self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
         self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
-        self.tokenizer = None
+        self.init_tokenizer(tokenizer)
     
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
+        self.pretrain_dataset.tokenizer = tokenizer
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
 
     def train_dataloader(self):
-        loader = DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=False,
-            drop_last=True,
-            persistent_workers=True,
-            collate_fn=MyCollater(self.tokenizer, self.text_max_len),
-        )
+        if self.mode == 'pretrain':
+            loader = DataLoader(
+                self.pretrain_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+                pin_memory=False,
+                drop_last=True,
+                persistent_workers=True,
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+            )
+        elif self.mode == 'ft':
+            loader = DataLoader(
+                self.train_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+                pin_memory=False,
+                drop_last=True,
+                persistent_workers=True,
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+            )
+        else:
+            raise NotImplementedError
         return loader
 
     def val_dataloader(self):
@@ -79,7 +119,7 @@ class PretrainStage2DataModule(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=MyCollater(self.tokenizer, self.text_max_len),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
         )
         return loader
     
@@ -92,7 +132,7 @@ class PretrainStage2DataModule(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=MyCollater(self.tokenizer, self.text_max_len),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
         )
         return loader
 
@@ -101,7 +141,7 @@ class PretrainStage2DataModule(LightningDataModule):
         parser.add_argument('--num_workers', type=int, default=4)
         parser.add_argument('--batch_size', type=int, default=64)
         parser.add_argument('--use_smiles', action='store_true', default=False)
-        parser.add_argument('--root', type=str, default='data/PubChemDataset/PubChem-320k')
+        parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_SMILES]{}[END_SMILES]. ')
         return parent_parser

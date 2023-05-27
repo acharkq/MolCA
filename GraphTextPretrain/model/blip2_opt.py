@@ -111,7 +111,7 @@ class Blip2OPT(Blip2Base):
         # self.prompt_length = prompt_tokens.attention_mask.sum(1)
 
     def forward(self, batch):
-        graphs, text, mask, _, prompt_lens = batch
+        graphs, text_tokens, prompt_lens = batch
         graph_embeds, graph_masks = self.graph_encoder(graphs)
         if not self.tune_gnn:
             graph_embeds = graph_embeds.detach()
@@ -126,8 +126,8 @@ class Blip2OPT(Blip2Base):
         )
         inputs_opt = self.opt_proj(query_output.last_hidden_state)
         atts_opt = torch.ones(inputs_opt.size()[:-1], dtype=torch.long).to(device)
-        targets = text.masked_fill(
-            text == self.opt_tokenizer.pad_token_id, -100
+        targets = text_tokens.input_ids.masked_fill(
+            text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
         )
         if self.prompt:
             targets = mask_by_len(targets, prompt_lens, -100) # do not apply loss to the prompt
@@ -137,9 +137,9 @@ class Blip2OPT(Blip2Base):
             torch.ones(atts_opt.size(), dtype=torch.long).to(device).fill_(-100)
         )
         targets = torch.cat([empty_targets, targets], dim=1)
-        inputs_embeds = self.opt_model.model.decoder.embed_tokens(text)
+        inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
-        attention_mask = torch.cat([atts_opt, mask], dim=1)
+        attention_mask = torch.cat([atts_opt, text_tokens.attention_mask], dim=1)
         
         outputs = self.opt_model(
             inputs_embeds=inputs_embeds,
@@ -179,8 +179,8 @@ class Blip2OPT(Blip2Base):
             captions (list): A list of strings of length batch_size * num_captions.
         """
         graphs = samples['graphs']
-        prompt = samples['prompt']
-        prompt_lens = samples['prompt_lens']
+        prompt_tokens = samples['prompt_tokens']
+        # prompt_lens = samples['prompt_lens']
         with self.maybe_autocast():
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             graph_embeds = self.ln_graph(graph_embeds)
@@ -204,14 +204,14 @@ class Blip2OPT(Blip2Base):
 
             # prompt = [prompt] * graph_embeds.size(0)
 
-            opt_tokens = self.opt_tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding="longest",
-                truncation=True,
-                max_length=128,
-            ).to(device)
-            attention_mask = torch.cat([atts_opt, opt_tokens.attention_mask], dim=1)
+            # opt_tokens = self.opt_tokenizer(
+            #     prompt,
+            #     return_tensors="pt",
+            #     padding="longest",
+            #     truncation=True,
+            #     max_length=128,
+            # ).to(device)
+            attention_mask = torch.cat([atts_opt, prompt_tokens.attention_mask], dim=1)
             
             if use_nucleus_sampling:
                 query_embeds = inputs_opt.repeat_interleave(num_captions, dim=0)
@@ -220,7 +220,7 @@ class Blip2OPT(Blip2Base):
                 query_embeds = inputs_opt.repeat_interleave(num_beams, dim=0)
 
             outputs = self.opt_model.generate(
-                input_ids=opt_tokens.input_ids,
+                input_ids=prompt_tokens.input_ids,
                 query_embeds=query_embeds,
                 attention_mask=attention_mask,
                 do_sample=use_nucleus_sampling,
@@ -235,7 +235,7 @@ class Blip2OPT(Blip2Base):
                 num_return_sequences=num_captions,
             )
 
-            prompt_length = opt_tokens.input_ids.shape[1]
+            prompt_length = prompt_tokens.input_ids.shape[1]
             output_text = self.opt_tokenizer.batch_decode(
                 outputs[:, prompt_length:], skip_special_tokens=True
             )

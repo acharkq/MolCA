@@ -19,6 +19,7 @@ class Blip2Stage1(pl.LightningModule):
             args = AttrDict(**args)
         
         self.args = args
+        self.rerank_cand_num = args.rerank_cand_num
         self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.declip, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
     
         self.save_hyperparameters(args)
@@ -84,7 +85,7 @@ class Blip2Stage1(pl.LightningModule):
             del graph_rep_total, text_rep_total
         # self.trainer.strategy.barrier()
     
-    def validation_epoch_end(self, outputs) -> None:
+    def validation_epoch_end_v2(self, outputs) -> None:
         if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
             return
         if self.trainer.global_rank == 0:
@@ -126,6 +127,61 @@ class Blip2Stage1(pl.LightningModule):
             self.log("rerank_test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
             del graph_rep_total, text_rep_total
 
+    def validation_epoch_end(self, outputs) -> None:
+        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
+            return
+        if self.trainer.global_rank == 0:
+            ## for validation set
+            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
+            g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20,\
+            graph_rep_total, text_rep_total, _, _, _, _ = \
+                eval_retrieval_inbatch_v2(self.blip2qformer, self.val_match_loader, self.device)
+            self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("val_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
+
+            self.log("rerank_val_inbatch_g2t_acc", g2t_rerank_acc, sync_dist=False)
+            self.log("rerank_val_inbatch_t2g_acc", t2g_rerank_acc, sync_dist=False)
+            self.log("rerank_val_inbatch_g2t_rec20", g2t_rerank_rec20, sync_dist=False)
+            self.log("rerank_val_inbatch_t2g_rec20", t2g_rerank_rec20, sync_dist=False)
+            
+            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, _ = \
+                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
+            self.log("val_fullset_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("val_fullset_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("val_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("val_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
+
+            ## for test set
+            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
+            g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
+            graph_rep_total, text_rep_total, graph_feat_total, graph_mask_total, text_total, text_mask_total = \
+                eval_retrieval_inbatch_v2(self.blip2qformer, self.test_match_loader, self.device)
+            self.log("rerank_test_inbatch_g2t_acc", g2t_rerank_acc, sync_dist=False)
+            self.log("rerank_test_inbatch_t2g_acc", t2g_rerank_acc, sync_dist=False)
+            self.log("rerank_test_inbatch_g2t_rec20", g2t_rerank_rec20, sync_dist=False)
+            self.log("rerank_test_inbatch_t2g_rec20", t2g_rerank_rec20, sync_dist=False)
+
+            self.log("test_inbatch_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("test_inbatch_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("test_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("test_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
+            
+            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, sim_g2t = \
+                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
+            self.log("test_fullset_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("test_fullset_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
+
+            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
+                eval_retrieval_fullset_v2(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.device)
+            self.log("rerank_test_fullset_g2t_acc", g2t_acc, sync_dist=False)
+            self.log("rerank_test_fullset_t2g_acc", t2g_acc, sync_dist=False)
+            self.log("rerank_test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
+            self.log("rerank_test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
+            del graph_rep_total, text_rep_total
 
     def training_step(self, batch, batch_idx):
         # if self.trainer.global_step < self.args.warmup_steps:
@@ -147,6 +203,10 @@ class Blip2Stage1(pl.LightningModule):
         parser = parent_parser.add_argument_group("GINSimclr")
         # train mode
         parser.add_argument('--temperature', type=float, default=0.1, help='the temperature of NT_XentLoss')
+
+        # evaluation
+        parser.add_argument('--rerank_cand_num', type=int, default=128)
+        
         # GIN
         parser.add_argument('--gin_hidden_dim', type=int, default=300)
         parser.add_argument('--gin_num_layers', type=int, default=5)
@@ -299,10 +359,10 @@ def eval_retrieval_fullset(graph_rep, text_rep, device):
 
 
 @torch.no_grad()
-def eval_retrieval_fullset_v2(model, sim_g2t_total, graph_feat_total, graph_mask_total, text_total, text_mask_total, device):
+def eval_retrieval_fullset_v2(model, sim_g2t_total, graph_feat_total, graph_mask_total, text_total, text_mask_total, rerank_cand_num, device):
     N = sim_g2t_total.shape[0]
     B = 16    
-    rcn = 32 ## re-rank candidate numbers
+    rcn = rerank_cand_num ## re-rank candidate numbers
     
     hit_g2t = []
     for i in tqdm(range(0, N, B), desc='re-ranking g2t'):
@@ -351,3 +411,103 @@ def eval_retrieval_fullset_v2(model, sim_g2t_total, graph_feat_total, graph_mask
     t2g_acc = round(t2g_acc * 100, 2)
     t2g_rec20 = round(t2g_rec20 * 100, 2)
     return g2t_acc, g2t_rec20, t2g_acc, t2g_rec20
+
+
+@torch.no_grad()
+def eval_retrieval_inbatch_v2(model, dataloader, device=None):
+    '''
+    include rerank
+    '''
+    assert isinstance(model, Blip2Qformer)
+    model.eval()
+    g2t_acc = 0
+    t2g_acc = 0
+    g2t_rec20 = 0
+    t2g_rec20 = 0
+    allcnt = 0
+    
+    g2t_rerank_acc = 0
+    t2g_rerank_acc = 0
+    g2t_rerank_rec20 = 0
+    t2g_rerank_rec20 = 0
+
+    graph_rep_total = []  
+    text_rep_total = []
+    
+    graph_feat_total = [] 
+    graph_mask_total = []
+    
+    text_total = []
+    text_mask_total = []
+    
+    for batch in tqdm(dataloader):
+        aug, text, text_mask = batch
+        text_total.append(text)
+        text_mask_total.append(text_mask)
+
+        aug = aug.to(device)
+        text = text.to(device)
+        text_mask = text_mask.to(device)
+        graph_rep, graph_feat, graph_mask = model.graph_forward(aug) # shape = [B, num_qs, D]
+        text_rep = model.text_forward(text, text_mask) # shape = [B, D]
+
+        sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1)).squeeze() # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
+        sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
+
+        B = sim_g2t.shape[0]
+        sorted_ids = sim_g2t.argsort(descending=True).cpu()
+        g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
+        t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        
+        g2t_acc += float((g2t_rank == 0).sum())
+        t2g_acc += float((t2g_rank == 0).sum())
+        g2t_rec20 += float((g2t_rank < 20).sum())
+        t2g_rec20 += float((t2g_rank < 20).sum())
+        
+        allcnt += B
+
+        graph_rep_total.append(graph_rep.cpu())
+        text_rep_total.append(text_rep.cpu())
+        graph_feat_total.append(graph_feat.cpu())
+        graph_mask_total.append(graph_mask.cpu())
+
+        ## reranking
+        graph_feat = graph_feat.repeat_interleave(B, 0) # shape = [B * B, num_qs, D]
+        graph_mask = graph_mask.repeat_interleave(B, 0) # shape = [B * B, num_qs, D]
+        text = text.repeat(B, 1) # shape = [B * B, text_len]
+        text_mask = text_mask.repeat(B, 1) # shape = [B * B, text_len]
+        gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(B, B)
+        rerank_sim = sim_g2t + gtm_sim
+
+        ## g2t rerank
+        sorted_ids = torch.argsort(rerank_sim, descending=True).cpu() # shape = [B, B]
+        hit_g2t = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
+        g2t_rerank_acc += float(hit_g2t[:, 0].sum())
+        g2t_rerank_rec20 += float(hit_g2t[:, :20].sum())
+        
+        ## t2g rerank
+        sorted_ids = torch.argsort(rerank_sim.T, descending=True).cpu() # shape = [B, B]
+        hit_t2g = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
+        t2g_rerank_acc += float(hit_t2g[:, 0].sum())
+        t2g_rerank_rec20 += float(hit_t2g[:, :20].sum())
+
+    graph_rep_total = torch.cat(graph_rep_total, dim=0)
+    text_rep_total = torch.cat(text_rep_total, dim=0)
+    graph_feat_total = pad_and_concat(graph_feat_total)
+    graph_mask_total = pad_and_concat(graph_mask_total)
+    text_total = torch.cat(text_total, dim=0)
+    text_mask_total = torch.cat(text_mask_total, dim=0)
+
+    g2t_acc = round(g2t_acc/allcnt * 100, 2)
+    t2g_acc = round(t2g_acc/allcnt * 100, 2)
+    g2t_rec20 = round(g2t_rec20 / allcnt * 100, 2)
+    t2g_rec20 = round(t2g_rec20 / allcnt * 100, 2)
+
+    g2t_rerank_acc = round(g2t_rerank_acc / allcnt * 100, 2)
+    t2g_rerank_acc = round(t2g_rerank_acc / allcnt * 100, 2)
+    g2t_rerank_rec20 = round(g2t_rerank_rec20 / allcnt * 100, 2)
+    t2g_rerank_rec20 = round(t2g_rerank_rec20 / allcnt * 100, 2)
+    return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
+        g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
+        graph_rep_total, text_rep_total, graph_feat_total, graph_mask_total, text_total, text_mask_total

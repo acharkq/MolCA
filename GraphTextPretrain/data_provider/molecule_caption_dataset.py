@@ -29,23 +29,23 @@ class MoleculeCaption(Dataset):
     def __len__(self):
         return len(self.graph_name_list)
 
-    def __getitem__(self, index):
-        graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
-        # load and process graph
-        graph_path = os.path.join(self.root, 'graph', graph_name)
-        data_graph = torch.load(graph_path)
-        # load and process text
-        text_path = os.path.join(self.root, 'text', text_name)
+    # def __getitem__(self, index):
+    #     graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
+    #     # load and process graph
+    #     graph_path = os.path.join(self.root, 'graph', graph_name)
+    #     data_graph = torch.load(graph_path)
+    #     # load and process text
+    #     text_path = os.path.join(self.root, 'text', text_name)
         
-        text_list = []
-        count = 0
-        for line in open(text_path, 'r', encoding='utf-8'):
-            count += 1
-            text_list.append(line.strip('\n'))
-            if count > 100:
-                break
-        text = ' '.join(text_list) + '\n'
-        return data_graph, text
+    #     text_list = []
+    #     count = 0
+    #     for line in open(text_path, 'r', encoding='utf-8'):
+    #         count += 1
+    #         text_list.append(line.strip('\n'))
+    #         if count > 100:
+    #             break
+    #     text = ' '.join(text_list) + '\n'
+    #     return data_graph, text
 
     def __getitem__(self, index):
         graph_name, text_name = self.graph_name_list[index], self.text_name_list[index]
@@ -74,11 +74,7 @@ class MoleculeCaption(Dataset):
             smiles = lines[0].strip()
 
         smiles_prompt = self.prompt.format(smiles)
-        prompt_len = self.tokenizer_text(smiles_prompt).input_ids.shape[1]
-        
-        ## concate prompt
-        text = smiles_prompt + text
-        return data_graph, text, prompt_len
+        return data_graph, text, smiles_prompt
     
     def tokenizer_text(self, text):
         sentence_token = self.tokenizer(text=text,
