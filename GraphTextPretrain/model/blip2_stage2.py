@@ -109,7 +109,7 @@ class Blip2Stage2(pl.LightningModule):
             self.save_predictions(all_predictions, all_targets)
             ## fixme: I am not sure if the max length is the same as previous experiments
             bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len) 
+                caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
             self.log("bleu2", bleu2, sync_dist=False)
             self.log("bleu4", bleu4, sync_dist=False)
             self.log("rouge_1", rouge_1, sync_dist=False)
@@ -189,6 +189,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--lr_decay_rate', type=float, default=0.9, help='optimizer lr decay rate')
         parser.add_argument('--scheduler', type=str, default='linear_warmup_cosine_lr', help='type of scheduler') # or linear_warmup_step_lr
         parser.add_argument('--stage1_path', type=str, default='')
+        parser.add_argument('--stage2_path', type=str, default='')
         parser.add_argument('--init_checkpoint', type=str, default='')
         parser.add_argument('--caption_eval_epoch', type=int, default=10)
         return parent_parser
@@ -219,10 +220,13 @@ def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
 
     bleu2 = corpus_bleu(references, hypotheses, weights=(.5,.5))
     bleu4 = corpus_bleu(references, hypotheses, weights=(.25,.25,.25,.25))
+    bleu2 *= 100
+    bleu4 *= 100
 
     print('BLEU-2 score:', bleu2)
     print('BLEU-4 score:', bleu4)
     _meteor_score = np.mean(meteor_scores)
+    _meteor_score *= 100
     print('Average Meteor score:', _meteor_score)
 
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'])
@@ -237,9 +241,9 @@ def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
         rouge_scores.append(rs)
 
     print('ROUGE score:')
-    rouge_1 = np.mean([rs['rouge1'].fmeasure for rs in rouge_scores])
-    rouge_2 = np.mean([rs['rouge2'].fmeasure for rs in rouge_scores])
-    rouge_l = np.mean([rs['rougeL'].fmeasure for rs in rouge_scores])
+    rouge_1 = np.mean([rs['rouge1'].fmeasure for rs in rouge_scores]) * 100
+    rouge_2 = np.mean([rs['rouge2'].fmeasure for rs in rouge_scores]) * 100
+    rouge_l = np.mean([rs['rougeL'].fmeasure for rs in rouge_scores]) * 100
     print('rouge1:', rouge_1)
     print('rouge2:', rouge_2)
     print('rougeL:', rouge_l)

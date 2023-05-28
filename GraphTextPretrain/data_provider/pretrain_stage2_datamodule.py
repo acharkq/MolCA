@@ -67,6 +67,7 @@ class PretrainStage2DataModule(LightningDataModule):
         super().__init__()
         self.mode = mode
         self.batch_size = batch_size
+        self.inference_batch_size = args.inference_batch_size
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
@@ -126,7 +127,7 @@ class PretrainStage2DataModule(LightningDataModule):
     def test_dataloader(self):
         loader = DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.inference_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=False,
@@ -140,6 +141,7 @@ class PretrainStage2DataModule(LightningDataModule):
         parser = parent_parser.add_argument_group("Data module")
         parser.add_argument('--num_workers', type=int, default=4)
         parser.add_argument('--batch_size', type=int, default=32)
+        parser.add_argument('--inference_batch_size', type=int, default=4)
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)

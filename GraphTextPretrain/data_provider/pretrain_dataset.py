@@ -52,7 +52,7 @@ class GINPretrainDataset(Dataset):
                 lines = f.readlines()
                 lines = [line.strip() for line in lines if line.strip()]
             text = ' '.join(lines) + '\n'
-            text, mask = self.tokenizer_text(text_sample[0])
+            text, mask = self.tokenizer_text(text)
         return data_graph, text.squeeze(0), mask.squeeze(0)
 
 

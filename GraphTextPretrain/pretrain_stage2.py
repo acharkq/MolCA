@@ -22,8 +22,13 @@ def main(args):
     # model
     if args.init_checkpoint:
         model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False)
-        print(f"loaded stage2 model from {args.init_checkpoint}")
-    else:
+        print(f"loaded init checkpoint from {args.init_checkpoint}")
+    elif args.stage2_path:
+        model = Blip2Stage2(args)
+        ckpt = torch.load(args.stage2_path, map_location='cpu')
+        model.load_state_dict(ckpt['state_dict'], strict=False)
+        print(f"loaded stage2 model from {args.stage1_path}")
+    elif args.stage1_path:
         model = Blip2Stage2(args)
         model.load_from_stage1_checkpoint(args.stage1_path)
         print(f"loaded stage1 model from {args.stage1_path}")

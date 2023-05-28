@@ -5,6 +5,34 @@ from pathlib import Path
 pd.options.display.max_rows = 1000
 pd.options.display.max_columns = 1000
 
+
+def get_mode(df):
+    if 'bleu2' in df.columns:
+        return 'caption'
+    elif 'test_inbatch_g2t_acc' in df.columns:
+        return 'retrieval'
+    else:
+        raise NotImplementedError
+
+
+def read_retrieval(df, args):
+    df = df.round(2)
+    if args.disable_rerank:
+        retrieval_cols = ['test_inbatch_g2t_acc', 'test_inbatch_g2t_rec20', 'test_inbatch_t2g_acc',   'test_inbatch_t2g_rec20',  'test_fullset_g2t_acc',  'test_fullset_g2t_rec20', 'test_fullset_t2g_acc', 'test_fullset_t2g_rec20']
+    else:
+        retrieval_cols = ['rerank_test_inbatch_g2t_acc', 'rerank_test_inbatch_g2t_rec20', 'rerank_test_inbatch_t2g_acc',   'rerank_test_inbatch_t2g_rec20', 'rerank_test_fullset_g2t_acc',  'rerank_test_fullset_g2t_rec20', 'rerank_test_fullset_t2g_acc', 'rerank_test_fullset_t2g_rec20']
+    retrieval_log = df[~df['test_inbatch_t2g_acc'].isnull()][retrieval_cols]
+    print(retrieval_cols)
+    print(retrieval_log.to_string(header=False))
+
+def read_caption(df, args):
+    df = df.round(2)
+    cols = ['bleu2','bleu4','rouge_1','rouge_2','rouge_l','meteor_score']
+    caption_log = df[cols]
+    
+    print(cols)
+    print(caption_log)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str)
@@ -20,14 +48,12 @@ if __name__ == '__main__':
     
     log_path = args.path / 'metrics.csv'
     log = pd.read_csv(log_path)
-    log = log.round(2)
-    print(f'File name: {file_name}')
-    if args.disable_rerank:
-        retrieval_cols = ['test_inbatch_g2t_acc', 'test_inbatch_g2t_rec20', 'test_inbatch_t2g_acc',   'test_inbatch_t2g_rec20',  'test_fullset_g2t_acc',  'test_fullset_g2t_rec20', 'test_fullset_t2g_acc', 'test_fullset_t2g_rec20']
-    else:
-        retrieval_cols = ['rerank_test_inbatch_g2t_acc', 'rerank_test_inbatch_g2t_rec20', 'rerank_test_inbatch_t2g_acc',   'rerank_test_inbatch_t2g_rec20', 'rerank_test_fullset_g2t_acc',  'rerank_test_fullset_g2t_rec20', 'rerank_test_fullset_t2g_acc', 'rerank_test_fullset_t2g_rec20']
-    retrieval_log = log[~log['test_inbatch_t2g_acc'].isnull()][retrieval_cols]
-    print(retrieval_cols)
-    print(retrieval_log.to_string(header=False))
     
+    print(f'File name: {file_name}')
+    mode = get_mode(log)
+    
+    if mode == 'retrieval':
+        read_retrieval(log, args)
+    elif mode == 'caption':
+        read_caption(log, args)
     
