@@ -95,14 +95,15 @@ class Blip2OPT(Blip2Base):
         self.opt_model = OPTForCausalLM.from_pretrained(
             opt_model, torch_dtype=torch.float16
         )
-        for name, param in self.opt_model.named_parameters():
-            param.requires_grad = False
         
         self.lora_tuning = lora_tuning
         if lora_tuning:
             peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
             self.opt_model = get_peft_model(self.opt_model, peft_config)
             self.opt_model.print_trainable_parameters()
+        else:
+            for name, param in self.opt_model.named_parameters():
+                param.requires_grad = False
 
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.opt_tokenizer(

@@ -21,7 +21,7 @@ def main(args):
     pl.seed_everything(args.seed)
     # model
     if args.init_checkpoint:
-        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False)
+        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False, args=args)
         print(f"loaded init checkpoint from {args.init_checkpoint}")
     elif args.stage2_path:
         model = Blip2Stage2(args)
@@ -41,7 +41,7 @@ def main(args):
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", save_last=True))
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_last=True, save_top_k=-1))
     
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
@@ -56,6 +56,7 @@ def main(args):
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
+        model.blip2opt.opt_model.save_pretrained(logger.save_dir)
     elif args.mode == 'eval':
         trainer.test(model, datamodule=dm)
     else:

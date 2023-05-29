@@ -55,7 +55,10 @@ class MoleculeCaption(Dataset):
             assert len(lines) == 1
             smiles = lines[0].strip()
 
-        smiles_prompt = self.prompt.format(smiles)
+        if self.prompt.find('{}') >= 0:
+            smiles_prompt = self.prompt.format(smiles)
+        else:
+            smiles_prompt = self.prompt
         return data_graph, text, smiles_prompt
     
     def tokenizer_text(self, text):

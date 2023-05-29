@@ -14,6 +14,7 @@ from rouge_score import rouge_scorer
 from tqdm import tqdm
 import numpy as np
 import torch.distributed as dist
+from peft.utils import PeftType
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -36,7 +37,7 @@ def get_module_state_dict(state_dict, module_name):
                 return value
             module_state_dict[key] = value
     return module_state_dict
-
+# peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
 class Blip2Stage2(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         to_be_removed = []
@@ -45,8 +46,12 @@ class Blip2Stage2(pl.LightningModule):
                 to_be_removed.append(key)
         for key in to_be_removed:
             checkpoint['state_dict'].pop(key)
-        if self.lora_tuning:
-            self.blip2opt.opt_model.save_pretrained(self.logger.save_dir)
+        # if self.lora_tuning:
+        #     if self.local_rank == 0:
+        #         self.blip2opt.opt_model.peft_config['default'].peft_type = PeftType.LORA
+        #         print('rank', self.local_rank)
+        #         print(self.blip2opt.opt_model.peft_config)
+        #         self.blip2opt.opt_model.save_pretrained(self.logger.save_dir)
         return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):
@@ -66,7 +71,7 @@ class Blip2Stage2(pl.LightningModule):
         self.min_len = args.min_len
         self.lora_tuning = args.lora_tuning
         self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.opt_model, args.prompt)
-        
+        # print(self.blip2opt.opt_model.peft_config)
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
 
