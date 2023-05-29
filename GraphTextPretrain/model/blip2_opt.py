@@ -11,6 +11,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
+from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType
 
 # from lavis.common.registry import registry
 # from lavis.models.base_model import all_gather_with_grad, concat_all_gather
@@ -63,6 +64,7 @@ class Blip2OPT(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         use_bn=False,
+        lora_tuning=False,
         opt_model="facebook/galactica-1.3b",
         prompt="",
     ):
@@ -96,6 +98,12 @@ class Blip2OPT(Blip2Base):
         for name, param in self.opt_model.named_parameters():
             param.requires_grad = False
         
+        self.lora_tuning = lora_tuning
+        if lora_tuning:
+            peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+            self.opt_model = get_peft_model(self.opt_model, peft_config)
+            self.opt_model.print_trainable_parameters()
+
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.opt_tokenizer(
             "\n", add_special_tokens=False
@@ -137,7 +145,10 @@ class Blip2OPT(Blip2Base):
             torch.ones(atts_opt.size(), dtype=torch.long).to(device).fill_(-100)
         )
         targets = torch.cat([empty_targets, targets], dim=1)
-        inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
+        if self.lora_tuning:
+            inputs_embeds = self.opt_model.model.get_decoder().embed_tokens(text_tokens.input_ids)
+        else:
+            inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_opt, text_tokens.attention_mask], dim=1)
         

@@ -45,6 +45,8 @@ class Blip2Stage2(pl.LightningModule):
                 to_be_removed.append(key)
         for key in to_be_removed:
             checkpoint['state_dict'].pop(key)
+        if self.lora_tuning:
+            self.blip2opt.opt_model.save_pretrained(self.logger.save_dir)
         return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):
@@ -52,19 +54,18 @@ class Blip2Stage2(pl.LightningModule):
         if isinstance(args, dict):
             args = AttrDict(**args)
         
-        if not hasattr(args, 'num_beams'):
-            args.num_beams = 5
-            args.max_len = 128
-            args.min_len = 8
+        if not hasattr(args, 'lora_tuning'):
             args.caption_eval_epoch = 10
             args.nucleus_sampling = True
+            args.lora_tuning = True
 
         self.args = args
         self.nucleus_sampling = args.nucleus_sampling
         self.num_beams = args.num_beams
         self.max_len = args.max_len
         self.min_len = args.min_len
-        self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.opt_model, args.prompt)
+        self.lora_tuning = args.lora_tuning
+        self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.opt_model, args.prompt)
         
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
@@ -179,6 +180,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--nucleus_sampling', action='store_true', default=True)
         parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--min_len', type=int, default=8)
+        parser.add_argument('--lora_tuning', action='store_true', default=False)
 
         # optimization
         parser.add_argument('--weight_decay', type=float, default=0.05, help='optimizer weight decay')
