@@ -14,7 +14,7 @@ from rouge_score import rouge_scorer
 from tqdm import tqdm
 import numpy as np
 import torch.distributed as dist
-from peft.utils import PeftType
+from peft import LoraConfig, TaskType
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -46,12 +46,11 @@ class Blip2Stage2(pl.LightningModule):
                 to_be_removed.append(key)
         for key in to_be_removed:
             checkpoint['state_dict'].pop(key)
-        # if self.lora_tuning:
-        #     if self.local_rank == 0:
-        #         self.blip2opt.opt_model.peft_config['default'].peft_type = PeftType.LORA
-        #         print('rank', self.local_rank)
-        #         print(self.blip2opt.opt_model.peft_config)
-        #         self.blip2opt.opt_model.save_pretrained(self.logger.save_dir)
+        if self.lora_tuning:
+            if self.local_rank == 0: # manually fix a bug in peft module
+                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+                self.blip2opt.opt_model.peft_config['default'] = peft_config
+                self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
         return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):

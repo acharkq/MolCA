@@ -32,7 +32,9 @@ def main(args):
         model = Blip2Stage2(args)
         model.load_from_stage1_checkpoint(args.stage1_path)
         print(f"loaded stage1 model from {args.stage1_path}")
-        
+    else:
+        model = Blip2Stage2(args)
+
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     # data
