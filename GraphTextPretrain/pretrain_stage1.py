@@ -37,7 +37,10 @@ def main(args):
     model.test_match_loader = dm.test_match_loader
 
     callbacks = []
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                         filename='{epoch:02d}', 
+                                         every_n_epochs=10, 
+                                         save_top_k=-1))
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=find_unused_parameters)

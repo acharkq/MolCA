@@ -43,7 +43,11 @@ def main(args):
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_last=True, save_top_k=-1))
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                         filename='{epoch:02d}', 
+                                         every_n_epochs=10, 
+                                         save_last=True, 
+                                         save_top_k=-1))
     
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')

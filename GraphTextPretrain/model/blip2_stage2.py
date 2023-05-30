@@ -46,7 +46,7 @@ class Blip2Stage2(pl.LightningModule):
                 to_be_removed.append(key)
         for key in to_be_removed:
             checkpoint['state_dict'].pop(key)
-        if self.lora_tuning:
+        if self.lora_tuning and (self.current_epoch + 1) % 10 == 0:
             if self.local_rank == 0: # manually fix a bug in peft module
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
                 self.blip2opt.opt_model.peft_config['default'] = peft_config
@@ -69,7 +69,7 @@ class Blip2Stage2(pl.LightningModule):
         self.max_len = args.max_len
         self.min_len = args.min_len
         self.lora_tuning = args.lora_tuning
-        self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.opt_model, args.prompt)
+        self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
         # print(self.blip2opt.opt_model.peft_config)
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
@@ -185,6 +185,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--min_len', type=int, default=8)
         parser.add_argument('--lora_tuning', action='store_true', default=False)
+        parser.add_argument('--peft_dir', type=str, default='')
 
         # optimization
         parser.add_argument('--weight_decay', type=float, default=0.05, help='optimizer weight decay')

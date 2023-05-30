@@ -11,7 +11,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
-from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType
+from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
 
 # from lavis.common.registry import registry
 # from lavis.models.base_model import all_gather_with_grad, concat_all_gather
@@ -65,6 +65,7 @@ class Blip2OPT(Blip2Base):
         cross_attention_freq=2,
         use_bn=False,
         lora_tuning=False,
+        peft_dir='',
         opt_model="facebook/galactica-1.3b",
         prompt="",
     ):
@@ -98,9 +99,12 @@ class Blip2OPT(Blip2Base):
         
         self.lora_tuning = lora_tuning
         if lora_tuning:
-            peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
-            self.opt_model = get_peft_model(self.opt_model, peft_config)
-            self.opt_model.print_trainable_parameters()
+            if peft_dir:
+                self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir)
+            else:
+                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+                self.opt_model = get_peft_model(self.opt_model, peft_config)
+                self.opt_model.print_trainable_parameters()
         else:
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False
