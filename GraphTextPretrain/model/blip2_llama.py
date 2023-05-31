@@ -95,11 +95,7 @@ class Blip2Llama(Blip2Base):
         self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'})
         
-        if args.load_in_8bit:
-            llm_model = LlamaForCausalLM.from_pretrained(llm_model, load_in_8bit=True, device_map='sequential')
-            self.llm_model = llm_model.cpu()
-        else:
-            self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.float16)
+        self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.float16)
 
         self.llm_model.resize_token_embeddings(len(self.llm_tokenizer))
         

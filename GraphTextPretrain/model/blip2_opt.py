@@ -94,11 +94,7 @@ class Blip2OPT(Blip2Base):
         self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})
         
-        if args.load_in_8bit:
-            opt_model = OPTForCausalLM.from_pretrained(opt_model, load_in_8bit=True, device_map='sequential')
-            self.opt_model = opt_model.cpu()
-        else:
-            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
+        self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         
         self.lora_tuning = lora_tuning
         if lora_tuning:
