@@ -5,9 +5,9 @@ import torch
 from torch.nn import functional as F
 import torch_geometric
 from data_provider.pretrain_dataset import GINPretrainDataset
-from data_provider.match_dataset import GINMatchDataset
+from data_provider.retrieval_dataset import RetrievalDataset
 
-class GINPretrainDataModule_v2(LightningDataModule):
+class Stage1DM(LightningDataModule):
     def __init__(
         self,
         num_workers: int = 0,
@@ -28,8 +28,8 @@ class GINPretrainDataModule_v2(LightningDataModule):
             print('Loading old veresion dataset')
             self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug)
         self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug)
-        self.val_dataset_match = GINMatchDataset(root + '/valid/', args).shuffle()
-        self.test_dataset_match = GINMatchDataset(root + '/test/', args).shuffle()
+        self.val_dataset_match = RetrievalDataset(root + '/valid/', args).shuffle()
+        self.test_dataset_match = RetrievalDataset(root + '/test/', args).shuffle()
         self.val_match_loader = torch_geometric.loader.DataLoader(self.val_dataset_match, 
                                                                   batch_size=self.match_batch_size,
                                                                   shuffle=False,

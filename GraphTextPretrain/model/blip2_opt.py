@@ -95,7 +95,8 @@ class Blip2OPT(Blip2Base):
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})
         
         self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
-        
+        self.opt_model.resize_token_embeddings(len(self.opt_tokenizer) + 1) # for the special placeholder token
+
         self.lora_tuning = lora_tuning
         if lora_tuning:
             if peft_dir:
@@ -156,6 +157,50 @@ class Blip2OPT(Blip2Base):
         inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_opt, text_tokens.attention_mask], dim=1)
         
+        outputs = self.opt_model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            return_dict=True,
+            labels=targets,
+        )
+        loss = outputs.loss
+        return {"loss": loss}
+
+    def forward_reaction(self, batch):
+        reaction_tokens, notes_tokens, graphs = batch
+        graph_embeds, graph_masks = self.graph_encoder(graphs)
+        if not self.tune_gnn:
+            graph_embeds = graph_embeds.detach()
+        graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+        device = graph_embeds.device
+        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=graph_embeds,
+            encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+            return_dict=True,
+        )
+        mol_tokens = self.opt_proj(query_output.last_hidden_state) # shape = [mol_num, num_query_token, D]
+
+        if self.lora_tuning:
+            react_embeds = self.opt_model.model.get_decoder().embed_tokens(reaction_tokens.input_ids) # shape = [B, max_len, D]
+            notes_embeds = self.opt_model.model.get_decoder().embed_tokens(notes_tokens.input_ids)
+        else:
+            react_embeds = self.opt_model.model.decoder.embed_tokens(reaction_tokens.input_ids) # shape = [B, max_len, D]
+            notes_embeds = self.opt_model.model.decoder.embed_tokens(notes_tokens.input_ids) # shape = [B, max_len, D]
+
+        react_embeds[reaction_tokens.is_ph_token] = mol_tokens.flatten(0, 1)
+        inputs_embeds = torch.cat((react_embeds, notes_embeds), dim=1)
+
+        targets = notes_tokens.input_ids.masked_fill(
+            notes_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
+        )
+        empty_targets = (
+            torch.ones(reaction_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
+        )
+        targets = torch.cat([empty_targets, targets], dim=1)
+        attention_mask = torch.cat([reaction_tokens.attention_mask, notes_tokens.attention_mask], dim=1)
+
         outputs = self.opt_model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

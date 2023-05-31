@@ -8,9 +8,9 @@ import os
 import random
 from transformers import BertTokenizer
 
-class GINMatchDataset(Dataset):
+class RetrievalDataset(Dataset):
     def __init__(self, root, args):
-        super(GINMatchDataset, self).__init__(root)
+        super(RetrievalDataset, self).__init__(root)
         self.root = root
         self.graph_aug = 'noaug'
         self.text_max_len = args.text_max_len

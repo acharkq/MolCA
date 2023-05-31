@@ -53,7 +53,7 @@ class InferenceCollater:
         return graphs, prompt_tokens, texts
     
 
-class PretrainStage2DataModule(LightningDataModule):
+class Stage2DM(LightningDataModule):
     def __init__(
         self,
         mode: str = 'pretrain',

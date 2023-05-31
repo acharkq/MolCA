@@ -1,14 +1,14 @@
 import os
 import torch
 import argparse
-import pytorch_lightning as pl
-from pytorch_lightning import Trainer
-import pytorch_lightning.callbacks as plc
-from data_provider.pretrain_stage2_datamodule import PretrainStage2DataModule
-from model.blip2_stage2 import Blip2Stage2
 import warnings
-from pytorch_lightning import strategies
+import pytorch_lightning as pl
+from pytorch_lightning import Trainer, strategies
+import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
+from data_provider.stage2_dm import Stage2DM
+from model.blip2_stage2 import Blip2Stage2
+
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
@@ -37,15 +37,15 @@ def main(args):
 
     print('total params:', sum(p.numel() for p in model.parameters()))
 
-    if args.opt_model.find('opt') >= 0:
+    if args.opt_model.find('galactica') >= 0:
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer
     else:
         raise NotImplementedError
     # data
-    dm = PretrainStage2DataModule(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
-
+    dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
@@ -82,7 +82,7 @@ def get_args():
     parser.add_argument('--mode', type=str, default='pretrain')
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
-    parser = PretrainStage2DataModule.add_model_specific_args(parser)
+    parser = Stage2DM.add_model_specific_args(parser)
     parser.set_defaults(accelerator='gpu',
                         devices='0,1,2,3',
                         precision=16,

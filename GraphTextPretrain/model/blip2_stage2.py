@@ -70,7 +70,7 @@ class Blip2Stage2(pl.LightningModule):
         self.max_len = args.max_len
         self.min_len = args.min_len
         self.lora_tuning = args.lora_tuning
-        if args.opt_model.find('opt') >= 0:
+        if args.opt_model.find('galactica') >= 0:
             self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
             self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
@@ -149,24 +149,47 @@ class Blip2Stage2(pl.LightningModule):
         return predictions, texts
 
     @torch.no_grad()
-    def validation_step(self, batch, batch_idx):
-        _, _, prompt_lens = batch
-        batch_size = prompt_lens.shape[0]
-        loss = self.blip2opt(batch)
-        ###============== Overall Loss ===================###
-        self.log("loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-        return loss['loss']
-
+    def validation_step(self, batch, batch_idx, dataloader_idx):
+        if dataloader_idx == 0:
+            _, _, prompt_lens = batch
+            batch_size = prompt_lens.shape[0]
+            loss = self.blip2opt(batch)
+            ###============== Overall Loss ===================###
+            self.log("molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+            return loss['loss']
+        elif dataloader_idx == 1:
+            reaction_tokens, _, _ = batch
+            batch_size = reaction_tokens.input_ids.shape[0]
+            loss = self.blip2opt.forward_reaction(batch)
+            ###============== Overall Loss ===================###
+            self.log("reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+            return loss['loss']
+        else:
+            raise NotImplementedError
+        
     def training_step(self, batch, batch_idx):
         if self.scheduler:
             self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
+        if isinstance(batch, list) and len(batch) == 2:
+            molecule_batch, reaction_batch = batch
+            batch_size = molecule_batch[-1].size(0)
+            ###============== molecule Loss ===================###
+            molecule_loss = self.blip2opt(molecule_batch)['loss']
+            self.log("molecule loss", float(molecule_loss), batch_size=batch_size, sync_dist=True)
+            
+            ###============== reaction Loss ===================###
+            reaction_loss = self.blip2opt.forward_reaction(reaction_batch)['loss']
+            self.log("reaction loss", float(reaction_loss), batch_size=batch_size, sync_dist=True)
 
-        batch_size = batch[-1].size(0)
-        loss = self.blip2opt(batch)
-        ###============== Overall Loss ===================###
-        self.log("loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-        self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
-        return loss['loss']
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
+            return molecule_loss + reaction_loss
+        else:
+            batch_size = batch[-1].size(0)
+            ###============== Overall Loss ===================###
+            loss = self.blip2opt(batch)
+            self.log("molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
+            return loss['loss']
 
     @staticmethod
     def add_model_specific_args(parent_parser):
