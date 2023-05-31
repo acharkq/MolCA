@@ -71,9 +71,9 @@ class Blip2Stage2(pl.LightningModule):
         self.min_len = args.min_len
         self.lora_tuning = args.lora_tuning
         if args.opt_model.find('opt') >= 0:
-            self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
+            self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
-            self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
+            self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
         else:
             raise NotImplementedError()
         self.tokenizer = self.blip2opt.init_tokenizer()
@@ -191,6 +191,9 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--min_len', type=int, default=8)
         parser.add_argument('--lora_tuning', action='store_true', default=False)
         parser.add_argument('--peft_dir', type=str, default='')
+
+        ## quantization
+        parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
         # optimization
         parser.add_argument('--weight_decay', type=float, default=0.05, help='optimizer weight decay')

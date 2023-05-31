@@ -68,6 +68,7 @@ class Blip2OPT(Blip2Base):
         peft_dir='',
         opt_model="facebook/galactica-1.3b",
         prompt="",
+        args=None,
     ):
         super().__init__()
         self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
@@ -93,9 +94,11 @@ class Blip2OPT(Blip2Base):
         self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})
         
-        self.opt_model = OPTForCausalLM.from_pretrained(
-            opt_model, torch_dtype=torch.float16
-        )
+        if args.load_in_8bit:
+            opt_model = OPTForCausalLM.from_pretrained(opt_model, load_in_8bit=True, device_map='sequential')
+            self.opt_model = opt_model.cpu()
+        else:
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         
         self.lora_tuning = lora_tuning
         if lora_tuning:

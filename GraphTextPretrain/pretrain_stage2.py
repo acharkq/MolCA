@@ -55,7 +55,12 @@ def main(args):
                                          save_last=True, 
                                          save_top_k=-1))
     
-    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    # strategy = strategies.DDPStrategy(find_unused_parameters=False)
+    args.devices = eval(args.devices)
+    if len(args.devices) == 1:
+        strategy = None
+    else:
+        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,

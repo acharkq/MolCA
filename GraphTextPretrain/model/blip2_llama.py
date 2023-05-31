@@ -66,6 +66,7 @@ class Blip2Llama(Blip2Base):
         peft_dir='',
         llm_model="decapoda-research/llama-7b-hf",
         prompt="",
+        args=None,
     ):
         super().__init__()
         self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
@@ -94,9 +95,12 @@ class Blip2Llama(Blip2Base):
         self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'})
         
-        self.llm_model = LlamaForCausalLM.from_pretrained(
-            llm_model, torch_dtype=torch.float16
-        )
+        if args.load_in_8bit:
+            llm_model = LlamaForCausalLM.from_pretrained(llm_model, load_in_8bit=True, device_map='sequential')
+            self.llm_model = llm_model.cpu()
+        else:
+            self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.float16)
+
         self.llm_model.resize_token_embeddings(len(self.llm_tokenizer))
         
         self.lora_tuning = lora_tuning
