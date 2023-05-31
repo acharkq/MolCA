@@ -37,8 +37,14 @@ def main(args):
 
     print('total params:', sum(p.numel() for p in model.parameters()))
 
+    if args.opt_model.find('opt') >= 0:
+        tokenizer = model.blip2opt.opt_tokenizer
+    elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
+        tokenizer = model.blip2opt.llm_tokenizer
+    else:
+        raise NotImplementedError
     # data
-    dm = PretrainStage2DataModule(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, model.blip2opt.opt_tokenizer, args)
+    dm = PretrainStage2DataModule(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
 
     callbacks = []
     ## fixme save only used parameters
@@ -62,13 +68,12 @@ def main(args):
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
         trainer.test(model, datamodule=dm)
-        model.blip2opt.opt_model.save_pretrained(logger.save_dir)
     elif args.mode == 'eval':
         trainer.test(model, datamodule=dm)
     else:
         raise NotImplementedError()
 
-if __name__ == '__main__':
+def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--filename', type=str, default="stage2_test")
     parser.add_argument('--seed', type=int, default=42, help='random seed')
@@ -85,10 +90,13 @@ if __name__ == '__main__':
                         accumulate_grad_batches=1,
                         check_val_every_n_epoch=1)
     args = parser.parse_args()
-    
+
     print("=========================================")
     for k, v in sorted(vars(args).items()):
         print(k, '=', v)
     print("=========================================")
-    main(args)
+    return args
+
+if __name__ == '__main__':
+    main(get_args())
 

@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Mapping, Union
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 import torch
 from model.blip2_opt import Blip2OPT
+from model.blip2_llama import Blip2Llama
 import pytorch_lightning as pl
 import torch.nn as nn
 from torch import optim
@@ -42,7 +43,7 @@ class Blip2Stage2(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         to_be_removed = []
         for key in checkpoint['state_dict']:
-            if key.startswith('blip2opt.opt_model'):
+            if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
                 to_be_removed.append(key)
         for key in to_be_removed:
             checkpoint['state_dict'].pop(key)
@@ -69,8 +70,12 @@ class Blip2Stage2(pl.LightningModule):
         self.max_len = args.max_len
         self.min_len = args.min_len
         self.lora_tuning = args.lora_tuning
-        self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
-        # print(self.blip2opt.opt_model.peft_config)
+        if args.opt_model.find('opt') >= 0:
+            self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
+        elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
+            self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt)
+        else:
+            raise NotImplementedError()
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
 
