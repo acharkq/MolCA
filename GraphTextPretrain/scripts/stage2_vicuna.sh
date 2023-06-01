@@ -1,7 +1,7 @@
 {
 filename='llama13b';
 llm="./llms/vicuna-13b";
-devices='6,7';
+devices='0,1';
 
 # pretrain on stage1 checkpoint
 # python stage2_vicuna.py --devices $devices --filename "pt_${filename}" --stage1_path "all_checkpoints/mola_dataset_notune_gnn_nosampline/epoch=49-step=120950.ckpt" --opt_model $llm --max_epochs 10 --mode eval --prompt 'The molecule\t' --tune_gnn;

@@ -50,8 +50,12 @@ class Blip2Stage2(pl.LightningModule):
         if self.lora_tuning and (self.current_epoch + 1) % 10 == 0:
             if self.local_rank == 0: # manually fix a bug in peft module
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
-                self.blip2opt.opt_model.peft_config['default'] = peft_config
-                self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
+                if hasattr(self.blip2opt, 'opt_model'):
+                    self.blip2opt.opt_model.peft_config['default'] = peft_config
+                    self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
+                elif hasattr(self.blip2opt, 'llm_model'):
+                    self.blip2opt.llm_model.peft_config['default'] = peft_config
+                    self.blip2opt.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
         return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):
