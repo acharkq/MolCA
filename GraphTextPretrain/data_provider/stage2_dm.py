@@ -122,7 +122,7 @@ class Stage2DM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
         )
-        return loader
+        return [loader,]
     
     def test_dataloader(self):
         loader = DataLoader(
@@ -139,7 +139,7 @@ class Stage2DM(LightningDataModule):
 
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("Data module")
-        parser.add_argument('--num_workers', type=int, default=4)
+        parser.add_argument('--num_workers', type=int, default=2)
         parser.add_argument('--batch_size', type=int, default=32)
         parser.add_argument('--inference_batch_size', type=int, default=4)
         parser.add_argument('--use_smiles', action='store_true', default=False)

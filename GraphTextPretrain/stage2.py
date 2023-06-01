@@ -41,6 +41,7 @@ def main(args):
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer
+        # tokenizer.padding_side = "left"
     else:
         raise NotImplementedError
     # data
@@ -54,7 +55,6 @@ def main(args):
                                          every_n_epochs=10, 
                                          save_last=True, 
                                          save_top_k=-1))
-    
     strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,

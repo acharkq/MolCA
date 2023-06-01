@@ -144,7 +144,7 @@ class Stage2ReactionDM(LightningDataModule):
                     collate_fn=ReactionCollater(self.tokenizer, self.text_max_len, self.mol_token_id),
             )
             return [mol_loader, rea_loader]
-        return mol_loader
+        return [mol_loader,]
     
     def test_dataloader(self):
         loader = DataLoader(

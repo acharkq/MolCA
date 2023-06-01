@@ -20,7 +20,8 @@ from lavis.models.blip2_models.blip2 import (
     disabled_train,
 )
 from model.blip2 import Blip2Base
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import LlamaTokenizer
+from model.modeling_llama import LlamaForCausalLM
 
 
  
@@ -94,9 +95,8 @@ class Blip2Llama(Blip2Base):
         self.llm_tokenizer.add_special_tokens({'bos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'})
-        
         self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.float16)
-
+        # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model)
         self.llm_model.resize_token_embeddings(len(self.llm_tokenizer))
         
         self.lora_tuning = lora_tuning
@@ -115,6 +115,7 @@ class Blip2Llama(Blip2Base):
         self.eos_token_id = self.llm_tokenizer(
             "\n", add_special_tokens=False
         ).input_ids[0]
+        self.pad_token_id = self.llm_tokenizer.pad_token_id
 
         self.llm_proj = nn.Linear(
             self.Qformer.config.hidden_size, self.llm_model.config.hidden_size
@@ -159,13 +160,13 @@ class Blip2Llama(Blip2Base):
         inputs_embeds = self.llm_model.get_input_embeddings()(text_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_llm, text_tokens.attention_mask], dim=1)
-        
+
         outputs = self.llm_model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             return_dict=True,
             labels=targets,
-            use_cache=False,
+            # use_cache=False,
         )
         loss = outputs.loss
         return {"loss": loss}
@@ -260,11 +261,12 @@ class Blip2Llama(Blip2Base):
                     num_beams=num_beams,
                     max_length=max_length,
                     min_length=min_length,
+                    pad_token_id=self.pad_token_id,
                     eos_token_id=self.eos_token_id,
                     repetition_penalty=repetition_penalty,
                     length_penalty=length_penalty,
                     num_return_sequences=num_captions,
-                    use_cache=False,
+                    # use_cache=False,
                 )
                 # outputs[outputs == 0] = 2 # convert output id 0 to 2 (eos_token_id)
                 output_text = self.llm_tokenizer.batch_decode(outputs, skip_special_tokens=True)

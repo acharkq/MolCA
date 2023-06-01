@@ -149,7 +149,7 @@ class Blip2Stage2(pl.LightningModule):
         return predictions, texts
 
     @torch.no_grad()
-    def validation_step(self, batch, batch_idx, dataloader_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if dataloader_idx == 0:
             _, _, prompt_lens = batch
             batch_size = prompt_lens.shape[0]

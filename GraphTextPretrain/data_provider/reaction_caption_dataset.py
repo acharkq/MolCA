@@ -87,14 +87,20 @@ class ReactionDataset(InMemoryDataset):
         input_mols = [(self.get_mol(mol_id), role) for mol_id, role in input_mols]
         output_mols = [(self.get_mol(mol_id), role) for mol_id, role in output_mols]
         
-        text = 'A chemical reaction with input '
+        text = 'The input molecules of a chemical reaction are '
         mols = []
-        for mol, role in input_mols:
-            text += f'{role.lower()} {self.ph_token} ' # use <mol> as a placeholder
+        for i, (mol, role) in enumerate(input_mols):
+            if i < len(input_mols) - 1:
+                text += f'{role.lower()} {self.ph_token}, ' # use <mol> as a placeholder
+            else:
+                text += f'{role.lower()} {self.ph_token}. ' # use <mol> as a placeholder
             mols.append(mol)
-        text += 'and output '
-        for mol, role in output_mols:
-            text += f'{role.lower()} {self.ph_token} ' # use <mol> as a placeholder
+        text += 'The output molecules are '
+        for i, (mol, role) in enumerate(output_mols):
+            if i < len(output_mols) - 1:
+                text += f' {self.ph_token}, ' # use <mol> as a placeholder
+            else:
+                text += f' {self.ph_token}. ' # use <mol> as a placeholder
             mols.append(mol)
         # react_tokens = self.tokenizer_text(text) # shape = [B, N]
         # notes_tokens = self.tokenizer_text(notes) # shape = [B, N]
@@ -154,6 +160,6 @@ class ReactionDataset(InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
 if __name__ == '__main__':
-    ReactionDataset('../data/ORDCaptioning/train')
-    ReactionDataset('../data/ORDCaptioning/valid')
-    ReactionDataset('../data/ORDCaptioning/test')
+    print(len(ReactionDataset('../data/ORDCaptioning/train', 128, 8)))
+    print(len(ReactionDataset('../data/ORDCaptioning/valid', 128, 8)))
+    print(len(ReactionDataset('../data/ORDCaptioning/test', 128, 8)))
