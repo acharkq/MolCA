@@ -63,13 +63,13 @@ class Blip2Stage2(pl.LightningModule):
         if isinstance(args, dict):
             args = AttrDict(**args)
         
-        if not hasattr(args, 'lora_tuning'):
-            args.caption_eval_epoch = 10
-            args.nucleus_sampling = True
-            args.lora_tuning = True
+        # if not hasattr(args, 'lora_tuning'):
+        #     args.caption_eval_epoch = 10
+        #     args.do_sample = True
+        #     args.lora_tuning = True
 
         self.args = args
-        self.nucleus_sampling = args.nucleus_sampling
+        self.do_sample = args.do_sample
         self.num_beams = args.num_beams
         self.max_len = args.max_len
         self.min_len = args.min_len
@@ -133,7 +133,7 @@ class Blip2Stage2(pl.LightningModule):
 
     def save_predictions(self, predictions, targets):
         assert len(predictions) == len(targets)
-        with open(os.path.join(self.logger.log_dir, 'predictions.txt'), 'w') as f:
+        with open(os.path.join(self.logger.log_dir, 'predictions.txt'), 'w', encoding='utf8') as f:
             for p, t in zip(predictions, targets):
                 line = {'prediction': p, 'target': t}
                 f.write(json.dumps(line, ensure_ascii=False) + '\n')
@@ -145,7 +145,7 @@ class Blip2Stage2(pl.LightningModule):
         samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
         predictions = self.blip2opt.generate(
             samples, 
-            use_nucleus_sampling=self.nucleus_sampling,
+            do_sample=self.do_sample,
             num_beams=self.num_beams,
             max_length=self.max_len * 2,
             min_length=self.min_len
@@ -159,14 +159,14 @@ class Blip2Stage2(pl.LightningModule):
             batch_size = prompt_lens.shape[0]
             loss = self.blip2opt(batch)
             ###============== Overall Loss ===================###
-            self.log("molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+            self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
             return loss['loss']
         elif dataloader_idx == 1:
             reaction_tokens, _, _ = batch
             batch_size = reaction_tokens.input_ids.shape[0]
             loss = self.blip2opt.forward_reaction(batch)
             ###============== Overall Loss ===================###
-            self.log("reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+            self.log("val reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
             return loss['loss']
         else:
             raise NotImplementedError
@@ -213,7 +213,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--opt_model', type=str, default="facebook/galactica-1.3b")
         # parser.add_argument('--prompt', type=str, default='a molecule of ')
         parser.add_argument('--num_beams', type=int, default=5)
-        parser.add_argument('--nucleus_sampling', action='store_true', default=True)
+        parser.add_argument('--do_sample', action='store_true', default=False)
         parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--min_len', type=int, default=8)
         parser.add_argument('--lora_tuning', action='store_true', default=False)

@@ -214,7 +214,7 @@ class Blip2OPT(Blip2Base):
     def generate(
         self,
         samples,
-        use_nucleus_sampling=False,
+        do_sample=False,
         num_beams=5,
         max_length=128,
         min_length=1,
@@ -228,7 +228,6 @@ class Blip2OPT(Blip2Base):
         Args:
             samples (dict): A dictionary containing the following keys:
                 - image (torch.Tensor): A tensor of shape (batch_size, 3, H, W)
-            use_nucleus_sampling (bool): Whether to use nucleus sampling. If False, use top-k sampling.
             num_beams (int): Number of beams for beam search. 1 means no beam search.
             max_length (int): The maximum length of the sequence to be generated.
             min_length (int): The minimum length of the sequence to be generated.
@@ -273,17 +272,23 @@ class Blip2OPT(Blip2Base):
             # ).to(device)
             attention_mask = torch.cat([atts_opt, prompt_tokens.attention_mask], dim=1)
             
-            if use_nucleus_sampling:
-                query_embeds = inputs_opt.repeat_interleave(num_captions, dim=0)
-                num_beams = 1
+            if do_sample:
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_captions, dim=0)
+                    num_beams = 1
+                else:
+                    query_embeds = inputs_opt
             else:
-                query_embeds = inputs_opt.repeat_interleave(num_beams, dim=0)
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_beams, dim=0)
+                else:
+                    query_embeds = inputs_opt
 
             outputs = self.opt_model.generate(
                 input_ids=prompt_tokens.input_ids,
                 query_embeds=query_embeds,
                 attention_mask=attention_mask,
-                do_sample=use_nucleus_sampling,
+                do_sample=do_sample,
                 top_p=top_p,
                 temperature=temperature,
                 num_beams=num_beams,
