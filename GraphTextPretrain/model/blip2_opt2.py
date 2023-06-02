@@ -21,8 +21,7 @@ from lavis.models.blip2_models.blip2 import (
 )
 from model.blip2 import Blip2Base
 from transformers import AutoTokenizer
-# from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
-from transformers import OPTForCausalLM
+from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
 
 
 opt_model_list = [
@@ -257,28 +256,53 @@ class Blip2OPT(Blip2Base):
             inputs_opt = self.opt_proj(query_output.last_hidden_state)
             atts_opt = torch.ones(inputs_opt.size()[:-1], dtype=torch.long, device=device)
 
+            # if "prompt" in samples.keys():
+            #     prompt = samples["prompt"]
+            # else:
+            #     prompt = self.prompt
+
+            # prompt = [prompt] * graph_embeds.size(0)
+
+            # opt_tokens = self.opt_tokenizer(
+            #     prompt,
+            #     return_tensors="pt",
+            #     padding="longest",
+            #     truncation=True,
+            #     max_length=128,
+            # ).to(device)
             attention_mask = torch.cat([atts_opt, prompt_tokens.attention_mask], dim=1)
             
-            inputs_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
+            if do_sample:
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_captions, dim=0)
+                    num_beams = 1
+                else:
+                    query_embeds = inputs_opt
+            else:
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_beams, dim=0)
+                else:
+                    query_embeds = inputs_opt
 
             outputs = self.opt_model.generate(
-                inputs_embeds=inputs_embeds,
+                input_ids=prompt_tokens.input_ids,
+                query_embeds=query_embeds,
                 attention_mask=attention_mask,
                 do_sample=do_sample,
                 top_p=top_p,
                 temperature=temperature,
                 num_beams=num_beams,
-                max_length=max_length,
+                max_new_tokens=max_length,
                 min_length=min_length,
-                # pad_token_id=self.pad_token_id,
                 eos_token_id=self.eos_token_id,
                 repetition_penalty=repetition_penalty,
                 length_penalty=length_penalty,
                 num_return_sequences=num_captions,
-                # use_cache=False,
             )
-            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            
+
+            prompt_length = prompt_tokens.input_ids.shape[1]
+            output_text = self.opt_tokenizer.batch_decode(
+                outputs[:, prompt_length:], skip_special_tokens=True
+            )
             output_text = [text.strip() for text in output_text]
             return output_text

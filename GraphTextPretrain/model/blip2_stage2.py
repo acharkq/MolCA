@@ -69,6 +69,8 @@ class Blip2Stage2(pl.LightningModule):
         #     args.lora_tuning = True
 
         self.args = args
+        if not hasattr(args, 'do_sample'):
+            args.do_sample = False
         self.do_sample = args.do_sample
         self.num_beams = args.num_beams
         self.max_len = args.max_len
