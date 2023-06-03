@@ -65,7 +65,7 @@ class Blip2OPT(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         use_bn=False,
-        lora_tuning=False,
+        llm_tune='freeze',
         peft_dir='',
         opt_model="facebook/galactica-1.3b",
         prompt="",
@@ -98,17 +98,21 @@ class Blip2OPT(Blip2Base):
         self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer) + 1) # for the special placeholder token
 
-        self.lora_tuning = lora_tuning
-        if lora_tuning:
+        self.llm_tune = llm_tune
+        if llm_tune == 'lora':
             if peft_dir:
                 self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir)
             else:
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
                 self.opt_model.print_trainable_parameters()
-        else:
+        elif llm_tune == 'freeze':
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False
+        elif llm_tune == 'full':
+            pass
+        else:
+            raise NotImplementedError()
 
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.opt_tokenizer(
@@ -151,10 +155,12 @@ class Blip2OPT(Blip2Base):
             torch.ones(atts_opt.size(), dtype=torch.long).to(device).fill_(-100)
         )
         targets = torch.cat([empty_targets, targets], dim=1)
-        if self.lora_tuning:
-            inputs_embeds = self.opt_model.model.get_decoder().embed_tokens(text_tokens.input_ids)
-        else:
-            inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
+        
+        inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
+        # if self.llm_tune == 'lora':
+        #     inputs_embeds = self.opt_model.model.get_decoder().embed_tokens(text_tokens.input_ids)
+        # else:
+        #     inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_opt, text_tokens.attention_mask], dim=1)
         
@@ -183,7 +189,7 @@ class Blip2OPT(Blip2Base):
         )
         mol_tokens = self.opt_proj(query_output.last_hidden_state) # shape = [mol_num, num_query_token, D]
 
-        if self.lora_tuning:
+        if self.llm_tune:
             react_embeds = self.opt_model.model.get_decoder().embed_tokens(reaction_tokens.input_ids) # shape = [B, max_len, D]
             notes_embeds = self.opt_model.model.get_decoder().embed_tokens(notes_tokens.input_ids)
         else:

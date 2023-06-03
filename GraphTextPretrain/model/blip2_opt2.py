@@ -290,6 +290,7 @@ class Blip2OPT(Blip2Base):
                 attention_mask=attention_mask,
                 do_sample=do_sample,
                 top_p=top_p,
+                top_k=25,
                 temperature=temperature,
                 num_beams=num_beams,
                 max_new_tokens=max_length,
