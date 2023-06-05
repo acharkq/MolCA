@@ -55,7 +55,11 @@ def main(args):
                                          every_n_epochs=10, 
                                          save_last=True, 
                                          save_top_k=-1))
-    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    if len(args.devices.split(',')) > 1:
+        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    else:
+        strategy = None
+        args.devices = eval(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
@@ -67,9 +71,9 @@ def main(args):
     
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
-        trainer.test(model, datamodule=dm)
     elif args.mode == 'eval':
-        trainer.test(model, datamodule=dm)
+        trainer.fit_loop.epoch_progress.current.completed = args.caption_eval_epoch - 1
+        trainer.validate(model, datamodule=dm)
     else:
         raise NotImplementedError()
 

@@ -50,7 +50,7 @@ class Blip2Stage2(pl.LightningModule):
                 checkpoint['state_dict'].pop(key)
         if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
             if self.local_rank == 0: # manually fix a bug in peft module
-                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
                 if hasattr(self.blip2opt, 'opt_model'):
                     self.blip2opt.opt_model.peft_config['default'] = peft_config
                     self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
@@ -67,6 +67,7 @@ class Blip2Stage2(pl.LightningModule):
         self.args = args
         if not hasattr(args, 'do_sample'):
             args.do_sample = False
+        self.caption_eval_epoch = args.caption_eval_epoch
         self.do_sample = args.do_sample
         self.num_beams = args.num_beams
         self.max_len = args.max_len
@@ -151,8 +152,27 @@ class Blip2Stage2(pl.LightningModule):
         )
         return predictions, texts
 
+    # @torch.no_grad()
+    # def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    #     if dataloader_idx == 0:
+    #         _, _, prompt_lens = batch
+    #         batch_size = prompt_lens.shape[0]
+    #         loss = self.blip2opt(batch)
+    #         ###============== Overall Loss ===================###
+    #         self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+    #         return loss['loss']
+    #     elif dataloader_idx == 1:
+    #         reaction_tokens, _, _ = batch
+    #         batch_size = reaction_tokens.input_ids.shape[0]
+    #         loss = self.blip2opt.forward_reaction(batch)
+    #         ###============== Overall Loss ===================###
+    #         self.log("val reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+    #         return loss['loss']
+    #     else:
+    #         raise NotImplementedError
+    
     @torch.no_grad()
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
         if dataloader_idx == 0:
             _, _, prompt_lens = batch
             batch_size = prompt_lens.shape[0]
@@ -161,6 +181,20 @@ class Blip2Stage2(pl.LightningModule):
             self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
             return loss['loss']
         elif dataloader_idx == 1:
+            if (self.current_epoch+1) % self.caption_eval_epoch != 0:
+                return 
+            graphs, prompt_tokens, texts = batch
+            ###============== Captioning Results ===================###
+            samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
+            predictions = self.blip2opt.generate(
+                samples, 
+                do_sample=self.do_sample,
+                num_beams=self.num_beams,
+                max_length=self.max_len * 2,
+                min_length=self.min_len
+            )
+            return predictions, texts
+        elif dataloader_idx == 2:
             reaction_tokens, _, _ = batch
             batch_size = reaction_tokens.input_ids.shape[0]
             loss = self.blip2opt.forward_reaction(batch)
@@ -169,7 +203,35 @@ class Blip2Stage2(pl.LightningModule):
             return loss['loss']
         else:
             raise NotImplementedError
+
+    def validation_epoch_end(self, outputs):
+        if (self.current_epoch+1) % self.caption_eval_epoch != 0:
+            return 
+        caption_outputs = outputs[1]
+        list_predictions, list_targets = zip(*caption_outputs)
+        predictions = [i for ii in list_predictions for i in ii]
+        targets = [i for ii in list_targets for i in ii]
+
+        all_predictions = [None for _ in range(self.trainer.world_size)]
+        all_targets = [None for _ in range(self.trainer.world_size)]
         
+        dist.all_gather_object(all_predictions, predictions)
+        dist.all_gather_object(all_targets, targets)
+        if self.global_rank == 0:
+            all_predictions = [i for ii in all_predictions for i in ii]
+            all_targets = [i for ii in all_targets for i in ii]
+            self.save_predictions(all_predictions, all_targets)
+            ## fixme: I am not sure if the max length is the same as previous experiments
+            bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+            self.log("bleu2", bleu2, sync_dist=False)
+            self.log("bleu4", bleu4, sync_dist=False)
+            self.log("rouge_1", rouge_1, sync_dist=False)
+            self.log("rouge_2", rouge_2, sync_dist=False)
+            self.log("rouge_l", rouge_l, sync_dist=False)
+            self.log("meteor_score", meteor_score, sync_dist=False)
+        
+
     def training_step(self, batch, batch_idx):
         if self.scheduler:
             self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
@@ -220,6 +282,11 @@ class Blip2Stage2(pl.LightningModule):
 
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
+
+        ## lora config
+        parser.add_argument('--lora_r', type=int, default=8)
+        parser.add_argument('--lora_alpha', type=int, default=32)
+        parser.add_argument('--lora_dropout', type=int, default=0.1)
 
         # optimization
         parser.add_argument('--reaction_weight', type=float, default=1.0)

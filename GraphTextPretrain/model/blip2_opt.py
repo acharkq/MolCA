@@ -95,7 +95,10 @@ class Blip2OPT(Blip2Base):
         self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})
         
-        self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
+        if opt_model == 'facebook/galactica-125m':
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model)
+        else:
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer) + 1) # for the special placeholder token
 
         self.llm_tune = llm_tune
@@ -103,7 +106,8 @@ class Blip2OPT(Blip2Base):
             if peft_dir:
                 self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir)
             else:
-                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                self.peft_config = peft_config
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
                 self.opt_model.print_trainable_parameters()
         elif llm_tune == 'freeze':

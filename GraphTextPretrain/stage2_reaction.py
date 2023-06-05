@@ -69,9 +69,9 @@ def main(args):
     
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm)
-        trainer.test(model, datamodule=dm)
     elif args.mode == 'eval':
-        trainer.test(model, datamodule=dm)
+        trainer.fit_loop.epoch_progress.current.completed = args.caption_eval_epoch - 1
+        trainer.validate(model, datamodule=dm)
     else:
         raise NotImplementedError()
 

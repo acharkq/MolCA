@@ -132,6 +132,16 @@ class Stage2ReactionDM(LightningDataModule):
                 persistent_workers=True,
                 collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
         )
+        test_loader = DataLoader(
+            self.mol_test_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+        )
         if self.reaction_root:
             rea_loader = DataLoader(
                     self.rea_val_dataset,
@@ -143,8 +153,8 @@ class Stage2ReactionDM(LightningDataModule):
                     persistent_workers=True,
                     collate_fn=ReactionCollater(self.tokenizer, self.text_max_len, self.mol_token_id),
             )
-            return [mol_loader, rea_loader]
-        return [mol_loader,]
+            return [mol_loader, test_loader, rea_loader]
+        return [mol_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(

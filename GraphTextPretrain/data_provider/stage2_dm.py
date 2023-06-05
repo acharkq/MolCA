@@ -111,8 +111,21 @@ class Stage2DM(LightningDataModule):
             raise NotImplementedError
         return loader
 
+    # def val_dataloader(self):
+    #     loader = DataLoader(
+    #         self.val_dataset,
+    #         batch_size=self.batch_size,
+    #         shuffle=False,
+    #         num_workers=self.num_workers,
+    #         pin_memory=False,
+    #         drop_last=False,
+    #         persistent_workers=True,
+    #         collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+    #     )
+    #     return [loader,]
+    
     def val_dataloader(self):
-        loader = DataLoader(
+        val_loader = DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
@@ -122,7 +135,17 @@ class Stage2DM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
         )
-        return [loader,]
+        test_loader = DataLoader(
+            self.test_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+        )
+        return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(
