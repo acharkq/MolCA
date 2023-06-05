@@ -21,8 +21,7 @@ from lavis.models.blip2_models.blip2 import (
 )
 from model.blip2 import Blip2Base
 from transformers import AutoTokenizer
-# from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
-from transformers import OPTForCausalLM
+from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
 
 
 opt_model_list = [
@@ -65,7 +64,7 @@ class Blip2OPT(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         use_bn=False,
-        llm_tune='freeze',
+        lora_tuning=False,
         peft_dir='',
         opt_model="facebook/galactica-1.3b",
         prompt="",
@@ -98,21 +97,17 @@ class Blip2OPT(Blip2Base):
         self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer) + 1) # for the special placeholder token
 
-        self.llm_tune = llm_tune
-        if llm_tune == 'lora':
+        self.lora_tuning = lora_tuning
+        if lora_tuning:
             if peft_dir:
                 self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir)
             else:
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
                 self.opt_model.print_trainable_parameters()
-        elif llm_tune == 'freeze':
+        else:
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False
-        elif llm_tune == 'full':
-            pass
-        else:
-            raise NotImplementedError()
 
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.opt_tokenizer(
@@ -155,12 +150,10 @@ class Blip2OPT(Blip2Base):
             torch.ones(atts_opt.size(), dtype=torch.long).to(device).fill_(-100)
         )
         targets = torch.cat([empty_targets, targets], dim=1)
-        
-        inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
-        # if self.llm_tune == 'lora':
-        #     inputs_embeds = self.opt_model.model.get_decoder().embed_tokens(text_tokens.input_ids)
-        # else:
-        #     inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
+        if self.lora_tuning:
+            inputs_embeds = self.opt_model.model.get_decoder().embed_tokens(text_tokens.input_ids)
+        else:
+            inputs_embeds = self.opt_model.model.decoder.embed_tokens(text_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_opt, text_tokens.attention_mask], dim=1)
         
@@ -189,7 +182,7 @@ class Blip2OPT(Blip2Base):
         )
         mol_tokens = self.opt_proj(query_output.last_hidden_state) # shape = [mol_num, num_query_token, D]
 
-        if self.llm_tune:
+        if self.lora_tuning:
             react_embeds = self.opt_model.model.get_decoder().embed_tokens(reaction_tokens.input_ids) # shape = [B, max_len, D]
             notes_embeds = self.opt_model.model.get_decoder().embed_tokens(notes_tokens.input_ids)
         else:
@@ -263,28 +256,54 @@ class Blip2OPT(Blip2Base):
             inputs_opt = self.opt_proj(query_output.last_hidden_state)
             atts_opt = torch.ones(inputs_opt.size()[:-1], dtype=torch.long, device=device)
 
+            # if "prompt" in samples.keys():
+            #     prompt = samples["prompt"]
+            # else:
+            #     prompt = self.prompt
+
+            # prompt = [prompt] * graph_embeds.size(0)
+
+            # opt_tokens = self.opt_tokenizer(
+            #     prompt,
+            #     return_tensors="pt",
+            #     padding="longest",
+            #     truncation=True,
+            #     max_length=128,
+            # ).to(device)
             attention_mask = torch.cat([atts_opt, prompt_tokens.attention_mask], dim=1)
             
-            inputs_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_opt, inputs_embeds], dim=1)
+            if do_sample:
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_captions, dim=0)
+                    num_beams = 1
+                else:
+                    query_embeds = inputs_opt
+            else:
+                if False:
+                    query_embeds = inputs_opt.repeat_interleave(num_beams, dim=0)
+                else:
+                    query_embeds = inputs_opt
 
             outputs = self.opt_model.generate(
-                inputs_embeds=inputs_embeds,
+                input_ids=prompt_tokens.input_ids,
+                query_embeds=query_embeds,
                 attention_mask=attention_mask,
                 do_sample=do_sample,
                 top_p=top_p,
+                top_k=25,
                 temperature=temperature,
                 num_beams=num_beams,
-                max_length=max_length,
+                max_new_tokens=max_length,
                 min_length=min_length,
-                # pad_token_id=self.pad_token_id,
                 eos_token_id=self.eos_token_id,
                 repetition_penalty=repetition_penalty,
                 length_penalty=length_penalty,
                 num_return_sequences=num_captions,
-                # use_cache=False,
             )
-            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            
+
+            prompt_length = prompt_tokens.input_ids.shape[1]
+            output_text = self.opt_tokenizer.batch_decode(
+                outputs[:, prompt_length:], skip_special_tokens=True
+            )
             output_text = [text.strip() for text in output_text]
             return output_text

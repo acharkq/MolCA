@@ -41,13 +41,14 @@ def get_module_state_dict(state_dict, module_name):
 # peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
 class Blip2Stage2(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        to_be_removed = []
-        for key in checkpoint['state_dict']:
-            if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
-                to_be_removed.append(key)
-        for key in to_be_removed:
-            checkpoint['state_dict'].pop(key)
-        if self.lora_tuning and (self.current_epoch + 1) % 10 == 0:
+        if self.llm_tune != 'full':
+            to_be_removed = []
+            for key in checkpoint['state_dict']:
+                if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
+                    to_be_removed.append(key)
+            for key in to_be_removed:
+                checkpoint['state_dict'].pop(key)
+        if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
             if self.local_rank == 0: # manually fix a bug in peft module
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
                 if hasattr(self.blip2opt, 'opt_model'):
@@ -62,22 +63,20 @@ class Blip2Stage2(pl.LightningModule):
         super().__init__()
         if isinstance(args, dict):
             args = AttrDict(**args)
-        
-        # if not hasattr(args, 'lora_tuning'):
-        #     args.caption_eval_epoch = 10
-        #     args.do_sample = True
-        #     args.lora_tuning = True
 
         self.args = args
+        if not hasattr(args, 'do_sample'):
+            args.do_sample = False
         self.do_sample = args.do_sample
         self.num_beams = args.num_beams
         self.max_len = args.max_len
         self.min_len = args.min_len
-        self.lora_tuning = args.lora_tuning
+        self.reaction_weight = args.reaction_weight
+        self.llm_tune = args.llm_tune
         if args.opt_model.find('galactica') >= 0:
-            self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
+            self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
-            self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.lora_tuning, args.peft_dir, args.opt_model, args.prompt, args)
+            self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         else:
             raise NotImplementedError()
         self.tokenizer = self.blip2opt.init_tokenizer()
@@ -136,7 +135,7 @@ class Blip2Stage2(pl.LightningModule):
         with open(os.path.join(self.logger.log_dir, 'predictions.txt'), 'w', encoding='utf8') as f:
             for p, t in zip(predictions, targets):
                 line = {'prediction': p, 'target': t}
-                f.write(json.dumps(line, ensure_ascii=False) + '\n')
+                f.write(json.dumps(line, ensure_ascii=True) + '\n')
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
@@ -186,7 +185,7 @@ class Blip2Stage2(pl.LightningModule):
             self.log("reaction loss", float(reaction_loss), batch_size=batch_size, sync_dist=True)
 
             self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
-            return molecule_loss + reaction_loss
+            return molecule_loss + self.reaction_weight * reaction_loss
         else:
             batch_size = batch[-1].size(0)
             ###============== Overall Loss ===================###
@@ -216,13 +215,14 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--do_sample', action='store_true', default=False)
         parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--min_len', type=int, default=8)
-        parser.add_argument('--lora_tuning', action='store_true', default=False)
+        parser.add_argument('--llm_tune', type=str, default='freeze')
         parser.add_argument('--peft_dir', type=str, default='')
 
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
         # optimization
+        parser.add_argument('--reaction_weight', type=float, default=1.0)
         parser.add_argument('--weight_decay', type=float, default=0.05, help='optimizer weight decay')
         parser.add_argument('--init_lr', type=float, default=1e-4, help='optimizer init learning rate')
         parser.add_argument('--min_lr', type=float, default=1e-5, help='optimizer min learning rate')
