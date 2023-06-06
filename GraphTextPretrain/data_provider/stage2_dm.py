@@ -9,6 +9,49 @@ from torch_geometric.loader.dataloader import Collater
 from data_provider.molecule_caption_dataset import MoleculeCaption
 
 
+# we split individual characters inside special tokens like [START_DNA]
+CUSTOM_SEQ_RE = re.compile(r"(\[START_(DNA|SMILES|I_SMILES|AMINO)])(.*?)(\[END_\2])")
+
+# token added to implement a custom sequence tokenization. This token is added at
+# corpus cleaning step and removed in pretokenization. The digits are added to increase the chance
+# that they do not occur in the corpus. The digits are escaped so that the token does not appear
+# literally in the source code in case we ever include it in the training data.
+SPLIT_MARKER = f"SPL{1}T-TH{1}S-Pl3A5E"
+
+def _insert_split_marker(m: re.Match):
+    """
+    Applies split marker based on a regex match of special tokens such as
+    [START_DNA].
+
+    Parameters
+    ----------
+    n : str
+        Input text to split
+
+    Returns
+    ----------
+    str - the text with the split token added
+    """
+    start_token, _, sequence, end_token = m.groups()
+    sequence = re.sub(r"(.)", fr"{SPLIT_MARKER}\1", sequence, flags=re.DOTALL)
+    return f"{start_token}{sequence}{SPLIT_MARKER}{end_token}"
+
+
+def escape_custom_split_sequence(text):
+    """
+    Applies custom splitting to the text for GALILEO's tokenization
+
+    Parameters
+    ----------
+    text : str
+        Input text to split
+
+    Returns
+    ----------
+    str - the text with the split token added
+    """
+    return CUSTOM_SEQ_RE.sub(_insert_split_marker, text)
+
 class TrainCollater:
     def __init__(self, tokenizer, text_max_len):
         self.text_max_len = text_max_len
@@ -22,18 +65,19 @@ class TrainCollater:
         prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
         prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
 
+        smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
         ## concate text and prompt
         texts = [prompt + text for prompt, text in zip(smiles_prompt, texts)]
 
 
         graphs = self.collater(graphs)
         text_tokens = self.tokenizer(text=texts,
-                                truncation=True,
-                                padding='longest',
-                                add_special_tokens=True,
-                                max_length=self.text_max_len,
-                                return_tensors='pt',
-                                return_attention_mask=True)
+                                     truncation=True,
+                                     padding='longest',
+                                     add_special_tokens=True,
+                                     max_length=self.text_max_len,
+                                     return_tensors='pt',
+                                     return_attention_mask=True)
         return graphs, text_tokens, prompt_lens
 
 
