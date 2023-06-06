@@ -27,7 +27,8 @@ def read_retrieval(df, args):
 
 def read_caption(df, args):
     df = df.round(2)
-    cols = ['bleu2','bleu4','rouge_1','rouge_2','rouge_l','meteor_score']
+    df = df[~df['bleu2'].isnull()]
+    cols = ['epoch', 'bleu2','bleu4','rouge_1','rouge_2','rouge_l','meteor_score']
     caption_log = df[cols]
     
     print(cols)
