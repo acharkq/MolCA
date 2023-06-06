@@ -178,6 +178,6 @@ class Stage2ReactionDM(LightningDataModule):
         parser.add_argument('--molecule_root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--reaction_root', type=str, default='data/ORDCaptioning')
         parser.add_argument('--text_max_len', type=int, default=128)
-        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_SMILES]{}[END_SMILES]. ')
+        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         return parent_parser
     

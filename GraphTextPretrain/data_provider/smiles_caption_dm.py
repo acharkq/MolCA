@@ -205,6 +205,6 @@ class SmilesCaptionDM(LightningDataModule):
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)
-        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_SMILES]{}[END_SMILES]. ')
+        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         return parent_parser
     
