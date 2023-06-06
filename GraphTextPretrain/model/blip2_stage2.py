@@ -147,7 +147,7 @@ class Blip2Stage2(pl.LightningModule):
             samples, 
             do_sample=self.do_sample,
             num_beams=self.num_beams,
-            max_length=self.max_len * 2,
+            max_length=self.max_len,
             min_length=self.min_len
         )
         return predictions, texts
@@ -190,7 +190,7 @@ class Blip2Stage2(pl.LightningModule):
                 samples, 
                 do_sample=self.do_sample,
                 num_beams=self.num_beams,
-                max_length=self.max_len * 2,
+                max_length=self.max_len,
                 min_length=self.min_len
             )
             return predictions, texts
@@ -275,7 +275,7 @@ class Blip2Stage2(pl.LightningModule):
         # parser.add_argument('--prompt', type=str, default='a molecule of ')
         parser.add_argument('--num_beams', type=int, default=5)
         parser.add_argument('--do_sample', action='store_true', default=False)
-        parser.add_argument('--max_len', type=int, default=128)
+        parser.add_argument('--max_len', type=int, default=256)
         parser.add_argument('--min_len', type=int, default=8)
         parser.add_argument('--llm_tune', type=str, default='freeze')
         parser.add_argument('--peft_dir', type=str, default='')
