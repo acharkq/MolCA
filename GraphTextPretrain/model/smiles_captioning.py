@@ -64,7 +64,7 @@ class SmilesCaptionLM(pl.LightningModule):
 
         if self.llm_tune == 'lora':
             if args.peft_dir:
-                self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir)
+                self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
             else:
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
                 self.peft_config = peft_config

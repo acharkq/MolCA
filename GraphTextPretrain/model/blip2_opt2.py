@@ -100,7 +100,7 @@ class Blip2OPT(Blip2Base):
         self.lora_tuning = lora_tuning
         if lora_tuning:
             if peft_dir:
-                self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir)
+                self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
             else:
                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
