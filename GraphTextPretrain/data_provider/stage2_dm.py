@@ -65,9 +65,9 @@ class TrainCollater:
         prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
         prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
 
-        smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
+        # smiles_prompt = [p) for p in smiles_prompt]
         ## concate text and prompt
-        texts = [prompt + text for prompt, text in zip(smiles_prompt, texts)]
+        texts = [escape_custom_split_sequence(prompt + text) for prompt, text in zip(smiles_prompt, texts)]
 
 
         graphs = self.collater(graphs)
