@@ -174,8 +174,8 @@ class Blip2Stage2(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx):
         if dataloader_idx == 0:
-            _, _, prompt_lens = batch
-            batch_size = prompt_lens.shape[0]
+            _, _, text_tokens = batch
+            batch_size = text_tokens.input_ids.shape[0]
             loss = self.blip2opt(batch)
             ###============== Overall Loss ===================###
             self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
@@ -249,7 +249,7 @@ class Blip2Stage2(pl.LightningModule):
             self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
             return molecule_loss + self.reaction_weight * reaction_loss
         else:
-            batch_size = batch[-1].size(0)
+            batch_size = batch[-1].input_ids.size(0)
             ###============== Overall Loss ===================###
             loss = self.blip2opt(batch)
             self.log("molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)

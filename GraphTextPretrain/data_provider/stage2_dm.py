@@ -122,10 +122,12 @@ class InferenceCollater_old:
     
 
 class InferenceCollater:
-    def __init__(self, tokenizer, text_max_len):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
+        self.mol_ph = mol_ph
+        self.mol_token_id = mol_token_id
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
@@ -240,7 +242,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
         )
         return [val_loader, test_loader]
     
@@ -253,7 +255,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
         )
         return loader
 

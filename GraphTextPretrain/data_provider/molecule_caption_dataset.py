@@ -56,7 +56,7 @@ class MoleculeCaption(Dataset):
             smiles = lines[0].strip()
 
         if self.prompt.find('{}') >= 0:
-            smiles_prompt = self.prompt.format(smiles)
+            smiles_prompt = self.prompt.format(smiles[:128])
         else:
             smiles_prompt = self.prompt
         return data_graph, text, smiles_prompt

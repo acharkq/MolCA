@@ -255,7 +255,7 @@ class Blip2OPT(Blip2Base):
             encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
             return_dict=True,
         )
-        inputs_opt = self.opt_proj(query_output.last_hidden_state)
+        mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
         targets = text_tokens.input_ids.masked_fill(
@@ -264,10 +264,9 @@ class Blip2OPT(Blip2Base):
         targets = torch.cat([empty_targets, targets], dim=1)
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
+        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
         inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
-        prompt_embeds[prompt_tokens.is_mol_token] = inputs_opt.flatten(0, 1)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
-
         attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
         
         outputs = self.opt_model(
