@@ -1,6 +1,9 @@
 import argparse
 import pandas as pd
 from pathlib import Path
+import json
+from model.blip2_stage2 import caption_evaluate
+from transformers import AutoTokenizer
 
 pd.options.display.max_rows = 1000
 pd.options.display.max_columns = 1000
@@ -33,6 +36,32 @@ def read_caption(df, args):
     print(cols)
     print(caption_log)
 
+
+def read_caption_prediction(args):
+    path = args.path
+    with open(path, 'r') as f:
+        lines = f.readlines()
+        lines = [json.loads(line) for line in lines]
+    tokenizer = AutoTokenizer.from_pretrained('./bert_pretrained')
+    prediction_list = []
+    target_list = []
+    for line in lines:
+        prediction = line['prediction']
+        target = line['target']
+        prediction_list.append(prediction)
+        target_list.append(target)
+    bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = caption_evaluate(prediction_list, target_list, tokenizer, 256)
+    bleu2 = round(bleu2, 2)
+    bleu4 = round(bleu4, 2)
+    rouge_1 = round(rouge_1, 2)
+    rouge_2 = round(rouge_2, 2)
+    rouge_l = round(rouge_l, 2)
+    meteor_score = round(meteor_score, 2)
+    cols = ['bleu2','bleu4','rouge_1','rouge_2','rouge_l','meteor_score']
+    print(cols)
+    print(bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str)
@@ -41,6 +70,11 @@ if __name__ == '__main__':
     parser.add_argument('--disable_rerank', action='store_true', default=False)
     args = parser.parse_args()
     args.path = Path(args.path)
+    
+    if args.path.name == 'predictions.txt':
+        read_caption_prediction(args)
+        exit()
+    
     log_hparas = args.path / 'hparams.yaml'
     with open(log_hparas, 'r') as f:
         line = f.readline()
