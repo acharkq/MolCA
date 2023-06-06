@@ -16,7 +16,7 @@ class SmilesCaption(Dataset):
         self.tokenizer = None
         
         if not prompt:
-            self.prompt = 'The SMILES of this molecule is [START_SMILES]{}[END_SMILES]. '
+            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
         else:
             self.prompt = prompt
 

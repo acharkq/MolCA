@@ -37,6 +37,17 @@ def _insert_split_marker(m: re.Match):
     return f"{start_token}{sequence}{SPLIT_MARKER}{end_token}"
 
 
+def smiles_handler(text, mol_ph):
+    smiles_list = []
+    for match in CUSTOM_SEQ_RE.finditer(text):
+        smiles = match.group(3)
+        smiles_list.append(smiles)
+    
+    text = CUSTOM_SEQ_RE.sub(r'\1\3\4%s' % (mol_ph), text)
+    text = escape_custom_split_sequence(text)
+    return text, smiles_list
+
+
 def escape_custom_split_sequence(text):
     """
     Applies custom splitting to the text for GALILEO's tokenization
@@ -53,24 +64,36 @@ def escape_custom_split_sequence(text):
     return CUSTOM_SEQ_RE.sub(_insert_split_marker, text)
 
 class TrainCollater:
-    def __init__(self, tokenizer, text_max_len):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
+        self.mol_ph = mol_ph
+        self.mol_token_id = mol_token_id
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
-
+        graphs = self.collater(graphs)
+        
         ## deal with prompt
-        prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
-        prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
+        smiles_prompt = [smiles_handler(p, self.mol_ph)[0] for p in smiles_prompt]
+        # prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
+        # prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
 
         # smiles_prompt = [p) for p in smiles_prompt]
         ## concate text and prompt
-        texts = [escape_custom_split_sequence(prompt + text) for prompt, text in zip(smiles_prompt, texts)]
 
+        # texts = [escape_custom_split_sequence(prompt + text) for prompt, text in zip(smiles_prompt, texts)]
+        smiles_prompt_tokens = self.tokenizer(text=smiles_prompt, 
+                                              truncation=False,
+                                              padding='longest',
+                                              add_special_tokens=True,
+                                              return_tensors='pt',
+                                              return_attention_mask=True)
 
-        graphs = self.collater(graphs)
+        is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
+        smiles_prompt_tokens['is_mol_token'] = is_mol_token
+
         text_tokens = self.tokenizer(text=texts,
                                      truncation=True,
                                      padding='longest',
@@ -78,10 +101,10 @@ class TrainCollater:
                                      max_length=self.text_max_len,
                                      return_tensors='pt',
                                      return_attention_mask=True)
-        return graphs, text_tokens, prompt_lens
+        return graphs, smiles_prompt_tokens, text_tokens
 
 
-class InferenceCollater:
+class InferenceCollater_old:
     def __init__(self, tokenizer, text_max_len):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
@@ -98,6 +121,30 @@ class InferenceCollater:
         return graphs, prompt_tokens, texts
     
 
+class InferenceCollater:
+    def __init__(self, tokenizer, text_max_len):
+        self.text_max_len = text_max_len
+        self.tokenizer = tokenizer
+        self.collater = Collater([], [])
+        
+    def __call__(self, batch):
+        graphs, texts, smiles_prompt = zip(*batch)
+        graphs = self.collater(graphs)
+        smiles_prompt = [smiles_handler(p, self.mol_ph)[0] for p in smiles_prompt]
+
+        ## deal with prompt
+        smiles_prompt_tokens = self.tokenizer(smiles_prompt, 
+                                       return_tensors='pt', 
+                                    #    max_length=self.text_max_len, 
+                                       padding='longest', 
+                                       truncation=False, 
+                                       return_attention_mask=True)
+
+        is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
+        smiles_prompt_tokens['is_mol_token'] = is_mol_token
+        return graphs, smiles_prompt_tokens, texts
+    
+
 class Stage2DM(LightningDataModule):
     def __init__(
         self,
@@ -110,6 +157,7 @@ class Stage2DM(LightningDataModule):
         args=None,
     ):
         super().__init__()
+        self.args = args
         self.mode = mode
         self.batch_size = batch_size
         self.inference_batch_size = args.inference_batch_size
@@ -121,6 +169,8 @@ class Stage2DM(LightningDataModule):
         self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
         self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
         self.init_tokenizer(tokenizer)
+        self.mol_ph_token = '<mol>' * self.args.num_query_token
+        
     
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
@@ -128,6 +178,8 @@ class Stage2DM(LightningDataModule):
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
+        self.mol_token_id = self.tokenizer.mol_token_id
+        # self.tokenizer.mol_token_id = tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
     def train_dataloader(self):
         if self.mode == 'pretrain':
@@ -139,7 +191,7 @@ class Stage2DM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
             )
         elif self.mode == 'ft':
             loader = DataLoader(
@@ -150,7 +202,7 @@ class Stage2DM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
             )
         else:
             raise NotImplementedError
@@ -178,7 +230,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
         )
         test_loader = DataLoader(
             self.test_dataset,
@@ -213,6 +265,6 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)
-        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_SMILES]{}[END_SMILES]. ')
+        parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         return parent_parser
     
