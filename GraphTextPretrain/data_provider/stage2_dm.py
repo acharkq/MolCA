@@ -7,7 +7,7 @@ import torch_geometric
 from torch.utils.data import DataLoader
 from torch_geometric.loader.dataloader import Collater
 from data_provider.molecule_caption_dataset import MoleculeCaption
-
+import re
 
 # we split individual characters inside special tokens like [START_DNA]
 CUSTOM_SEQ_RE = re.compile(r"(\[START_(DNA|SMILES|I_SMILES|AMINO)])(.*?)(\[END_\2])")
@@ -90,6 +90,7 @@ class InferenceCollater:
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
 
+        smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
         ## deal with prompt
         prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
 
