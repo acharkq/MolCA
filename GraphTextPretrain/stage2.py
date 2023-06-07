@@ -7,6 +7,7 @@ from pytorch_lightning import Trainer, strategies
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from data_provider.stage2_dm import Stage2DM
+from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 
 
@@ -46,11 +47,13 @@ def main(args):
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer
-        # tokenizer.padding_side = "left"
     else:
         raise NotImplementedError
     # data
-    dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    if args.root.lower().find('chebi') >= 0:
+        dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    else:
+        dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
     callbacks = []
     ## fixme save only used parameters
