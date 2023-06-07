@@ -174,7 +174,10 @@ class Blip2OPT(Blip2Base):
             if peft_dir:
                 self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
             else:
-                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                if self.args.peft_config:
+                    peft_config = LoraConfig.from_json_file(self.args.peft_config)
+                else:
+                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
                 self.peft_config = peft_config
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
                 self.opt_model.print_trainable_parameters()

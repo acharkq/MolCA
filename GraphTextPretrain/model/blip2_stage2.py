@@ -278,6 +278,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--max_len', type=int, default=256)
         parser.add_argument('--min_len', type=int, default=8)
         parser.add_argument('--llm_tune', type=str, default='freeze')
+        parser.add_argument('--peft_config', type=str, default=None)
         parser.add_argument('--peft_dir', type=str, default='')
 
         ## quantization
