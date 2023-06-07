@@ -466,7 +466,7 @@ class Blip2OPT(Blip2Base):
             return output_text
 
     @torch.no_grad()
-    def qa(
+    def blip_qa(
         self, 
         samples,
         do_sample=False,
@@ -478,6 +478,7 @@ class Blip2OPT(Blip2Base):
         length_penalty=1.0,
         num_captions=1,
         temperature=1,
+        output_scores=False,
         ):
 
         device = next(self.parameters()).device
@@ -519,22 +520,117 @@ class Blip2OPT(Blip2Base):
             ## replace mol tokens
             prompt_embeds[is_mol_token] = mol_tokens.flatten(0, 1)
         
-        outputs = self.opt_model.generate(
-                inputs_embeds=prompt_embeds,
-                attention_mask=prompt_tokens.attention_mask,
-                do_sample=do_sample,
-                top_p=top_p,
-                temperature=temperature,
-                num_beams=num_beams,
-                max_length=max_length,
-                min_length=min_length,
-                # pad_token_id=self.pad_token_id,
-                eos_token_id=self.eos_token_id,
-                repetition_penalty=repetition_penalty,
-                length_penalty=length_penalty,
-                num_return_sequences=num_captions,
-                # use_cache=False,
+        if output_scores:
+            outputs = self.opt_model.generate(
+                    inputs_embeds=prompt_embeds,
+                    attention_mask=prompt_tokens.attention_mask,
+                    do_sample=do_sample,
+                    top_p=top_p,
+                    temperature=temperature,
+                    num_beams=num_beams,
+                    max_length=max_length,
+                    min_length=min_length,
+                    # pad_token_id=self.pad_token_id,
+                    eos_token_id=self.eos_token_id,
+                    repetition_penalty=repetition_penalty,
+                    length_penalty=length_penalty,
+                    num_return_sequences=num_captions,
+                    output_scores=True,
+                    return_dict_in_generate=True
+                    # use_cache=False,
             )
-        output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        output_text = [text.strip() for text in output_text]
-        return output_text
+            return outputs
+        else:
+            outputs = self.opt_model.generate(
+                    inputs_embeds=prompt_embeds,
+                    attention_mask=prompt_tokens.attention_mask,
+                    do_sample=do_sample,
+                    top_p=top_p,
+                    temperature=temperature,
+                    num_beams=num_beams,
+                    max_length=max_length,
+                    min_length=min_length,
+                    # pad_token_id=self.pad_token_id,
+                    eos_token_id=self.eos_token_id,
+                    repetition_penalty=repetition_penalty,
+                    length_penalty=length_penalty,
+                    num_return_sequences=num_captions,
+                    # use_cache=False,
+                )
+            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            output_text = [text.strip() for text in output_text]
+            return output_text
+    
+    @torch.no_grad()
+    def opt_qa(
+        self, 
+        samples,
+        do_sample=False,
+        num_beams=5,
+        max_length=128,
+        min_length=1,
+        top_p=0.9,
+        repetition_penalty=1.0,
+        length_penalty=1.0,
+        num_captions=1,
+        temperature=1,
+        output_scores=False,
+        ):
+
+        device = next(self.parameters()).device
+        ## data processing
+        prompts = samples['prompts'] # assume list of strings
+        prompts = [escape_custom_split_sequence(p) for p in prompts]
+        
+        prompt_tokens = self.opt_tokenizer(prompts,
+                                           truncation=False,
+                                           padding='longest',
+                                           add_special_tokens=True,
+                                        #    max_length=self.args.max_len[],
+                                           return_tensors='pt',
+                                           return_attention_mask=True).to(device)
+        
+        prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
+
+        if output_scores:
+            ## forward function
+            outputs = self.opt_model.generate(
+                    inputs_embeds=prompt_embeds,
+                    attention_mask=prompt_tokens.attention_mask,
+                    do_sample=do_sample,
+                    top_p=top_p,
+                    temperature=temperature,
+                    num_beams=num_beams,
+                    max_length=max_length,
+                    min_length=min_length,
+                    # pad_token_id=self.pad_token_id,
+                    eos_token_id=self.eos_token_id,
+                    repetition_penalty=repetition_penalty,
+                    length_penalty=length_penalty,
+                    num_return_sequences=num_captions,
+                    # use_cache=False,
+                    output_scores=True,
+                    return_dict_in_generate=True
+                )
+            return outputs
+        else:
+            ## forward function
+            outputs = self.opt_model.generate(
+                    inputs_embeds=prompt_embeds,
+                    attention_mask=prompt_tokens.attention_mask,
+                    do_sample=do_sample,
+                    top_p=top_p,
+                    temperature=temperature,
+                    num_beams=num_beams,
+                    max_length=max_length,
+                    min_length=min_length,
+                    # pad_token_id=self.pad_token_id,
+                    eos_token_id=self.eos_token_id,
+                    repetition_penalty=repetition_penalty,
+                    length_penalty=length_penalty,
+                    num_return_sequences=num_captions,
+                    # use_cache=False,
+                )
+            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            output_text = [text.strip() for text in output_text]
+            return output_text

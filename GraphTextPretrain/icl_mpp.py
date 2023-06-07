@@ -1,19 +1,19 @@
 import os
+import json
 import pandas as pd
 import torch
 import argparse
 import warnings
+import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning import Trainer, strategies
-import pytorch_lightning.callbacks as plc
-from pytorch_lightning.loggers import CSVLogger
 from model.blip2_opt import Blip2OPT
 from model.blip2_stage2 import Blip2Stage2
-# from data_provider.stage2_dm import Stage2DM
+from pathlib import Path
 from data_provider.splitters import scaffold_split_without_dataset
 from data_provider.loader import MoleculeDataset
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
 import random
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -44,13 +44,18 @@ class PromptDataset(Dataset):
         self.train_smiles = train_smiles
         self.valid_smiles = valid_smiles
         self.test_smiles = test_smiles
+        self.train_y = train_y.numpy()
+        self.valid_y = valid_y.numpy()
+        self.test_y = test_y.numpy()
+        # print(self.train_y)
+        # print(self.valid_y)
+        # print(self.test_y)
         if len(train_y.shape) == 1:
-            self.train_y = train_y.reshape(-1, 1)
-            self.valid_y = valid_y.reshape(-1, 1)
-            self.test_y = test_y.reshape(-1, 1)
+            self.train_y = self.train_y.reshape(-1, 1)
+            self.valid_y = self.valid_y.reshape(-1, 1)
+            self.test_y = self.test_y.reshape(-1, 1)
         
         ## construct in context learning prompt
-
         if dataset.lower() == 'bbbp':
             prompt_func = self.bbbp_prompt
         elif dataset.lower() == 'bace':
@@ -67,10 +72,10 @@ class PromptDataset(Dataset):
         
         self.neg_smiles = []
         self.pos_smiles = []
-        print(self.train_y.shape)
         for task_id in range(self.train_y.shape[1]):
-            neg_ids = (self.train_y[:, task_id] == -1).nonzero(as_tuple=True)[0]
-            pos_ids = (self.train_y[:, task_id] == 1).nonzero(as_tuple=True)[0]
+            # neg_ids = (self.train_y[:, task_id] == -1).nonzero(as_tuple=True)[0]
+            neg_ids = (self.train_y[:, task_id] == -1).nonzero()[0]
+            pos_ids = (self.train_y[:, task_id] == 1).nonzero()[0]
             self.neg_smiles.append([])
             self.pos_smiles.append([])
             for idx in neg_ids:
@@ -78,12 +83,35 @@ class PromptDataset(Dataset):
             for idx in pos_ids:
                 self.pos_smiles[-1].append(train_smiles[idx])
 
-    def bbbp_prompt(self, smiles, task_id=0):
+    def bbbp_prompt(self, smiles, task_id=0, label='True'):
         '''
         galactica version
         '''
-        prompt = 'Here is a SMILES formula: [START_I_SMILES]%s[END_I_SMILES]\n Question: Will the chemical compound penetrate the blood-brain barrier?' % smiles
+        # prompt = 'Here is a SMILES formula: [START_I_SMILES]%s[END_I_SMILES]\n Question: Will the chemical compound penetrate the blood-brain barrier?' % smiles
+        prompt = '[START_I_SMILES]%s[END_I_SMILES]. Question: Will this chemical compound penetrate the blood-brain barrier, Yes or No?' % smiles
+        # if label == 'True':
+        #     prompt = '[START_I_SMILES]%s[END_I_SMILES]. This chemical compound can penetrate the blood-brain barrier.' % smiles
+        # elif label == 'False':
+        #     prompt = '[START_I_SMILES]%s[END_I_SMILES]. This chemical compound cannot penetrate the blood-brain barrier.' % smiles
+        # elif label == 'Unknown':
+        #     prompt = '[START_I_SMILES]%s[END_I_SMILES]. This chemical compound' % smiles
+        # else:
+        #     raise NotImplementedError
+        if label == 'True':
+            prompt = '[START_I_SMILES]%s[END_I_SMILES]. Question: Will this chemical compound penetrate the blood-brain barrier, Yes or No? Answer: Yes. ' % smiles
+        elif label == 'False':
+            prompt = '[START_I_SMILES]%s[END_I_SMILES]. Question: Will this chemical compound penetrate the blood-brain barrier, Yes or No? Answer: No. ' % smiles
+        elif label == 'Unknown':
+            prompt = '[START_I_SMILES]%s[END_I_SMILES]. Question: Will this chemical compound penetrate the blood-brain barrier, Yes or No? Answer: ' % smiles
+        else:
+            raise NotImplementedError
         return prompt
+
+    @classmethod
+    def bbbp_parse_label(self, line):
+        if line.lower().find('no') >= 0:
+            return -1
+        return 1
 
     def bace_prompt(self, smiles, task_id=0):
         prompt = 'Will [START_I_SMILES]%s[END_I_SMILES] bind to human beta-secretase 1 (BACE-1)?' % smiles
@@ -112,28 +140,40 @@ class PromptDataset(Dataset):
     def __getitem__(self, idx):
         icl_list = []
         for task_id in range(self.train_y.shape[1]):
-            pos_num = self.num_shots // 2
-            neg_num = self.num_shots - pos_num
+            neg_num = self.num_shots // 2
+            pos_num = self.num_shots - neg_num
             pos_smiles = random.sample(self.pos_smiles[task_id], k=pos_num)
             neg_smiles = random.sample(self.neg_smiles[task_id], k=neg_num)
             
             icl = []
             for smiles in pos_smiles:
-                prompt = self.prompt_func(smiles, task_id)
-                prompt += ' Answer: Yes.'
+                prompt = self.prompt_func(smiles, task_id, 'True')
                 icl.append(prompt)
             for smiles in neg_smiles:
-                prompt = self.prompt_func(smiles, task_id)
-                prompt += ' Answer: No.'
+                prompt = self.prompt_func(smiles, task_id, 'False')
                 icl.append(prompt)
             random.shuffle(icl)
             icl = ' '.join(icl)
-            prompt = self.prompt_func(self.test_smiles[idx], task_id) + ' Answer: '
+            prompt = self.prompt_func(self.test_smiles[idx], task_id, 'Unknown')
             icl = ' '.join([icl, prompt])
             icl_list.append(icl)
         return tuple(icl_list)
 
-        
+
+def evaluation(y_true, y_scores):
+    roc_list = []
+    for i in range(y_true.shape[1]):
+        # AUC is only defined when there is at least one positive data.
+        if np.sum(y_true[:, i] == 1) > 0 and np.sum(y_true[:, i] == -1) > 0:
+            is_valid = y_true[:, i]**2 > 0
+            roc_list.append(roc_auc_score(
+                (y_true[is_valid, i] + 1)/2, y_scores[is_valid, i]))
+
+    if len(roc_list) < y_true.shape[1]:
+        print("Some target is missing!")
+        print("Missing ratio: %f" % (1 - float(len(roc_list))/y_true.shape[1]))
+    mean_roc = sum(roc_list) / len(roc_list)
+    return mean_roc
 
 def main(args):
     pl.seed_everything(args.seed)
@@ -146,23 +186,88 @@ def main(args):
         print(f"loaded init checkpoint from {args.init_checkpoint}")
     
     model.to(f'cuda:{args.device}')
+    model.eval()
     print('total params:', sum(p.numel() for p in model.parameters()))
     dataset = PromptDataset(args.mpp_dataset, args.num_shots)
-    dataloader = DataLoader(dataset, batch_size=8, shuffle=False, drop_last=False, num_workers=2)
-    for data_list in tqdm(dataloader):
-        for data in data_list:
-            print('----------------')
-            print(data)
-            samples = {'prompts': data}
-            output = model.qa(
-                samples, 
-                do_sample=True,
-                num_beams=5,
-                max_length=128,
-                min_length=8,
-                temperature=0.7,
-            )
-            print(output)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, drop_last=False, num_workers=2)
+    
+    num_task_dict = {'tox21': 12, 'hiv': 1, 'muv': 17, 'bace': 1,
+                         'bbbp': 1, 'toxcast': 617, 'sider': 27, 'clintox': 2}
+
+    total_predictions = [[] for _ in range(num_task_dict[args.mpp_dataset])]
+    output_list = [[] for _ in range(num_task_dict[args.mpp_dataset])]
+    output_scores = True
+    if output_scores:
+        cand_ids = torch.cat([model.opt_tokenizer('Yes', return_tensors='pt').input_ids, model.opt_tokenizer('No', return_tensors='pt').input_ids], dim=0)
+        cand_ids = cand_ids.squeeze(-1)
+        for task_list in tqdm(dataloader):
+            for i, data in enumerate(task_list):
+                samples = {'prompts': data}
+                if args.mode == 'blip':
+                    output = model.blip_qa(
+                        samples, 
+                        do_sample=False,
+                        num_beams=1,
+                        max_length=10,
+                        min_length=1,
+                        temperature=0.7,
+                        output_scores=True,
+                        top_p=1,
+                    )
+                elif args.mode == 'opt':
+                    output = model.opt_qa(
+                        samples, 
+                        do_sample=False,
+                        num_beams=1,
+                        max_length=10,
+                        min_length=1,
+                        temperature=0.7,
+                        output_scores=True,
+                        top_p=1,
+                    )
+                else:
+                    raise NotImplementedError()
+                predictions = sum(output['scores'][:3])[:, cand_ids] # shape = [B, 2]
+                predictions = predictions.softmax(dim=-1)[:, 0] # shape = [B]
+                total_predictions[i].extend(predictions.tolist())
+                output_list[i].extend(output)
+    else:
+        for task_list in tqdm(dataloader):
+            for i, data in enumerate(task_list):
+                samples = {'prompts': data}
+                if args.mode == 'blip':
+                    output = model.blip_qa(
+                        samples, 
+                        do_sample=True,
+                        num_beams=1,
+                        max_length=10,
+                        min_length=1,
+                        temperature=0.7,
+                    )
+                elif args.mode == 'opt':
+                    output = model.opt_qa(
+                        samples, 
+                        do_sample=True,
+                        num_beams=1,
+                        max_length=10,
+                        min_length=1,
+                        temperature=0.7,
+                    )
+                else:
+                    raise NotImplementedError()
+                predictions = [PromptDataset.bbbp_parse_label(item) for item in output]
+                total_predictions[i].extend(predictions)
+                output_list[i].extend(output)
+    total_predictions = np.asarray(total_predictions).T
+    log_dir = Path(f'all_checkpoints/{args.filename}')
+    log_dir.mkdir(exist_ok=True)
+    
+    mean_roc = evaluation(dataset.test_y, total_predictions)
+    mean_roc = round(mean_roc * 100, 2)
+    print('mean roc', mean_roc)
+
+    with open(log_dir / 'predictions.json', 'w', encoding='utf-8') as f:
+        json.dump(output_list, f, ensure_ascii=True)
 
     
 
@@ -173,10 +278,11 @@ def get_args():
     # MM settings
     parser.add_argument('--prompt', type=str, default='')
     parser.add_argument('--use_bn', action='store_true', default=False)
-    parser.add_argument('--mode', type=str, default='pretrain')
+    parser.add_argument('--mode', type=str, default='blip')
     parser.add_argument('--device', type=str, default='0')
     parser.add_argument('--mpp_dataset', type=str, default='bbbp')
     parser.add_argument('--num_shots', type=int, default=5)
+    parser.add_argument('--batch_size', type=int, default=4)
     # parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     # parser = Stage2DM.add_model_specific_args(parser)
