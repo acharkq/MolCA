@@ -17,6 +17,11 @@ warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is
 torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
+class MyDDPSpawnStrategy(strategies.DDPSpawnStrategy):
+    def load_model_state_dict(self, checkpoint):
+        assert self.lightning_module is not None
+        self.lightning_module.load_state_dict(checkpoint["state_dict"], strict=False)
+
 def main(args):
     pl.seed_everything(args.seed)
     # model
@@ -56,7 +61,7 @@ def main(args):
                                          save_last=True, 
                                          save_top_k=-1))
     if len(args.devices.split(',')) > 1:
-        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+        strategy = MyDDPSpawnStrategy(find_unused_parameters=False)
     else:
         strategy = None
         args.devices = eval(args.devices)
@@ -70,7 +75,7 @@ def main(args):
                                          )
     
     if args.mode in {'pretrain', 'ft'}:
-        trainer.fit(model, datamodule=dm)
+        trainer.fit(model, datamodule=dm, ckpt_path=args.ckpt_path)
     elif args.mode == 'eval':
         trainer.fit_loop.epoch_progress.current.completed = args.caption_eval_epoch - 1
         trainer.validate(model, datamodule=dm)
@@ -84,6 +89,7 @@ def get_args():
     # MM settings
     parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='pretrain')
+    parser.add_argument('--ckpt_path', type=str, default=None)
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = Stage2DM.add_model_specific_args(parser)
