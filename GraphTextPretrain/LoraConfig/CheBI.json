@@ -1,0 +1,14 @@
+{
+"base_model_name_or_path": null,
+"bias": "none",
+"fan_in_fan_out": false,
+"inference_mode": true,
+"init_lora_weights": true,
+"lora_alpha": 32,
+"lora_dropout": 0.1,
+"modules_to_save": ["q_proj", "v_proj", "out_proj", "fc1", "fc2"],
+"peft_type": "LORA",
+"r": 64,
+"target_modules": null,
+"task_type": "CAUSAL_LM"
+}

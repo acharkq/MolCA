@@ -94,7 +94,8 @@ class TrainCollater:
 
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
-
+        # print(smiles_prompt_tokens.input_ids, self.mol_token_id)
+        # print(is_mol_token)
         text_tokens = self.tokenizer(text=texts,
                                      truncation=True,
                                      padding='longest',
@@ -175,8 +176,8 @@ class CheBIDataset(Dataset):
         self.text_list = []
         for line in lines:
             _, smiles, text = line.split('\t')
-        self.smiles_list.append(smiles)
-        self.text_list.append(text)
+            self.smiles_list.append(smiles)
+            self.text_list.append(text)
 
     def __len__(self):
         return len(self.smiles_list)
@@ -213,7 +214,7 @@ class Stage2CheBIDM(LightningDataModule):
         self.text_max_len = text_max_len
         self.prompt = args.prompt
         self.train_dataset = CheBIDataset(root+f'/train.txt', text_max_len, self.prompt)
-        self.val_dataset = CheBIDataset(root + '/valid.txt', text_max_len, self.prompt)
+        self.val_dataset = CheBIDataset(root + '/validation.txt', text_max_len, self.prompt)
         self.test_dataset = CheBIDataset(root + '/test.txt', text_max_len, self.prompt)
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
@@ -221,7 +222,7 @@ class Stage2CheBIDM(LightningDataModule):
     
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
-        self.pretrain_dataset.tokenizer = tokenizer
+        # self.pretrain_dataset.tokenizer = tokenizer
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
