@@ -245,46 +245,45 @@ class Blip2OPT(Blip2Base):
         return {"loss": loss}
     
     def forward(self, batch):
-        with torch.cuda.amp.autocast(cache_enabled=False):
-            graphs, prompt_tokens, text_tokens = batch
-            graph_embeds, graph_masks = self.graph_encoder(graphs)
-            if not self.tune_gnn:
-                graph_embeds = graph_embeds.detach()
-            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
-            device = graph_embeds.device
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-                return_dict=True,
-            )
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
-            
-            empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
-            targets = text_tokens.input_ids.masked_fill(
-                text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
-            )
-            targets = torch.cat([empty_targets, targets], dim=1)
+        graphs, prompt_tokens, text_tokens = batch
+        graph_embeds, graph_masks = self.graph_encoder(graphs)
+        if not self.tune_gnn:
+            graph_embeds = graph_embeds.detach()
+        graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+        device = graph_embeds.device
+        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=graph_embeds,
+            encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+            return_dict=True,
+        )
+        mol_tokens = self.opt_proj(query_output.last_hidden_state)
+        
+        empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
+        targets = text_tokens.input_ids.masked_fill(
+            text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
+        )
+        targets = torch.cat([empty_targets, targets], dim=1)
 
-            prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-            # print('-----------------')
-            # print(prompt_tokens.is_mol_token.shape)
-            # print(mol_tokens.flatten(0, 1).shape)
-            # print(prompt_embeds.shape)
-            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
-            inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
-            inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
-            attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
-            
-            outputs = self.opt_model(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                return_dict=True,
-                labels=targets,
-            )
-            loss = outputs.loss
-            return {"loss": loss}
+        prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
+        # print('-----------------')
+        # print(prompt_tokens.is_mol_token.shape)
+        # print(mol_tokens.flatten(0, 1).shape)
+        # print(prompt_embeds.shape)
+        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
+        inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
+        inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
+        attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
+        
+        outputs = self.opt_model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            return_dict=True,
+            labels=targets,
+        )
+        loss = outputs.loss
+        return {"loss": loss}
 
     def forward_reaction(self, batch):
         reaction_tokens, notes_tokens, graphs = batch

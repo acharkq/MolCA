@@ -10,7 +10,7 @@ from data_provider.stage2_dm import Stage2DM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 
-torch.set_default_dtype(torch.float16)
+# torch.set_default_dtype(torch.float16)
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
@@ -42,10 +42,10 @@ def main(args):
     else:
         model = Blip2Stage2(args)
 
-    for name, parameter in model.named_parameters():
-        if parameter.dtype != torch.float16:
-            print(name, parameter.dtype)
-        # print(parameter.shape)
+    # for name, parameter in model.named_parameters():
+    #     if parameter.dtype != torch.float16:
+    #         print(name, parameter.dtype)
+    #     # print(parameter.shape)
     # print('-----------')
     print('total params:', sum(p.numel() for p in model.parameters()))
 

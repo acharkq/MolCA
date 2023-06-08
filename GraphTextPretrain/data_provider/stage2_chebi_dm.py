@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader, Dataset
 from torch_geometric.loader.dataloader import Collater
 import re
 from ogb.utils import smiles2graph
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
 
 # we split individual characters inside special tokens like [START_DNA]
 CUSTOM_SEQ_RE = re.compile(r"(\[START_(DNA|SMILES|I_SMILES|AMINO)])(.*?)(\[END_\2])")
