@@ -10,6 +10,7 @@ from data_provider.stage2_dm import Stage2DM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 
+torch.set_default_dtype(torch.float16)
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 ## for pyg bug
@@ -41,6 +42,11 @@ def main(args):
     else:
         model = Blip2Stage2(args)
 
+    for name, parameter in model.named_parameters():
+        if parameter.dtype != torch.float16:
+            print(name, parameter.dtype)
+        # print(parameter.shape)
+    # print('-----------')
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     if args.opt_model.find('galactica') >= 0:
@@ -64,7 +70,12 @@ def main(args):
                                          save_last=True, 
                                          save_top_k=-1))
     if len(args.devices.split(',')) > 1:
-        strategy = MyDDPSpawnStrategy(find_unused_parameters=False)
+        if args.strategy_name == 'fsdp':
+            strategy = strategies.DDPFullyShardedNativeStrategy()
+        elif args.strategy_name == 'deepspeed':
+            strategy = strategies.DeepSpeedStrategy(stage=3)
+        else:
+            strategy = MyDDPSpawnStrategy(find_unused_parameters=False)
     else:
         strategy = None
         args.devices = eval(args.devices)
@@ -92,6 +103,7 @@ def get_args():
     # MM settings
     parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='pretrain')
+    parser.add_argument('--strategy_name', type=str, default=None)
     parser.add_argument('--ckpt_path', type=str, default=None)
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
