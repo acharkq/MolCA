@@ -186,7 +186,7 @@ class CheBIDataset(Dataset):
     
     def __getitem__(self, index):
         smiles = self.smiles_list[index]
-        text = self.text_list[index]
+        text = self.text_list[index] + '\n'
         graph = smiles2data(smiles)
 
         if self.prompt.find('{}') >= 0:

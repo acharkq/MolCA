@@ -47,8 +47,8 @@ def read_caption_prediction(args):
     prediction_list = []
     target_list = []
     for line in lines:
-        prediction = line['prediction']
-        target = line['target']
+        prediction = line['prediction'].strip()
+        target = line['target'].strip()
         prediction_list.append(prediction)
         target_list.append(target)
     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = caption_evaluate(prediction_list, target_list, tokenizer, 256)
