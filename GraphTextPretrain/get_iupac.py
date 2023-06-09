@@ -2,7 +2,7 @@ import pubchempy as pcp
 from pathlib import Path
 from tqdm import tqdm
 
-subsets = ['train', 'valid', 'test']
+subsets = ['valid']
 for sub in subsets:
     path = Path('data/PubChemDataset_v4/%s/smiles' % sub)
     files = list(path.glob('*'))
@@ -33,8 +33,12 @@ for sub in subsets:
         with open(target_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
             lines = [line.strip() for line in lines if line.strip()]
-    passed = len(lines)
+        passed = len(lines)
+    else:
+        passed = 0
+    # print('ehrerer')
     smiles_list = smiles_list[passed:]
+    # print(smiles_list)
     # print(files)
     with open(target_path, 'a', encoding='utf-8') as ff:
         for smiles in tqdm(smiles_list):
