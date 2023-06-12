@@ -7,7 +7,9 @@ from pytorch_lightning import Trainer, strategies
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from model.smiles_captioning import SmilesCaptionLM
+from model.smiles_t5_captioning import SmilesT5CaptionLM
 from data_provider.smiles_caption_dm import SmilesCaptionDM
+from data_provider.smiles_iupac_dm import SmilesIupacDM
 
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -20,16 +22,23 @@ torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (t
 def main(args):
     pl.seed_everything(args.seed)
     # model
+    if args.llm_name.find('t5') >= 0:
+        lm = SmilesT5CaptionLM
+    else:
+        lm = SmilesCaptionLM
     if args.init_checkpoint:
-        model = SmilesCaptionLM.load_from_checkpoint(args.init_checkpoint, strict=False, args=args)
+        model = lm.load_from_checkpoint(args.init_checkpoint, strict=False, args=args)
         print(f"loaded init checkpoint from {args.init_checkpoint}")
     else:
-        model = SmilesCaptionLM(args)
+        model = lm(args)
 
     print('total params:', sum(p.numel() for p in model.parameters()))
     tokenizer = model.tokenizer
     # data
-    dm = SmilesCaptionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    if args.iupac_prediction:
+        dm = SmilesIupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    else:
+        dm = SmilesCaptionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
     callbacks = []
     ## fixme save only used parameters
@@ -68,6 +77,7 @@ def get_args():
     # MM settings
     parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='pretrain')
+    parser.add_argument('--iupac_prediction', action='store_true', default=False)
     parser = Trainer.add_argparse_args(parser)
     parser = SmilesCaptionLM.add_model_specific_args(parser)  # add model args
     parser = SmilesCaptionDM.add_model_specific_args(parser)

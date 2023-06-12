@@ -20,7 +20,7 @@ devices='6,7';
 
 python stage2.py --devices $devices --filename "pt_${filename}_smiles_prompt_long" --ckpt_path "all_checkpoints/pt_gal6.7b_smiles_prompt_long/last.ckpt" --opt_model $llm --max_epochs 10 --mode pretrain --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune freeze --inference_batch_size 2 --max_len 128;
 
-# python stage2.py --devices $devices --filename "ft_${filename}_smiles_prompt_freeze_long" --stage2_path "all_checkpoints/pt_${filename}_smiles_prompt_long/last.ckpt" --opt_model $llm --mode ft --tune_gnn --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --init_lr 1e-4 --scheduler None --llm_tune freeze --inference_batch_size 2 --max_epochs 100 --max_len 128;
+python stage2.py --devices $devices --filename "ft_${filename}_smiles_prompt_freeze_long" --stage2_path "all_checkpoints/pt_${filename}_smiles_prompt_long/last.ckpt" --opt_model $llm --mode ft --tune_gnn --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --init_lr 1e-4 --scheduler None --llm_tune freeze --inference_batch_size 2 --max_epochs 100 --max_len 128;
 
 # python stage2.py --devices $devices --filename "ft_${filename}_smiles_prompt_lora_long" --stage2_path "all_checkpoints/pt_${filename}_smiles_prompt_long/last.ckpt" --opt_model $llm --mode ft --tune_gnn --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --init_lr 1e-4 --scheduler None --llm_tune lora --inference_batch_size 2 --max_epochs 100 --max_len 128;
 

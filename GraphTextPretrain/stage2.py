@@ -7,6 +7,7 @@ from pytorch_lightning import Trainer, strategies
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from data_provider.stage2_dm import Stage2DM
+from data_provider.iupac_dm import IupacDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 
@@ -42,11 +43,6 @@ def main(args):
     else:
         model = Blip2Stage2(args)
 
-    # for name, parameter in model.named_parameters():
-    #     if parameter.dtype != torch.float16:
-    #         print(name, parameter.dtype)
-    #     # print(parameter.shape)
-    # print('-----------')
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     if args.opt_model.find('galactica') >= 0:
@@ -56,10 +52,13 @@ def main(args):
     else:
         raise NotImplementedError
     # data
-    if args.root.lower().find('chebi') >= 0:
-        dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    if args.iupac_prediction:
+        dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     else:
-        dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        if args.root.lower().find('chebi') >= 0:
+            dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        else:
+            dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
     callbacks = []
     ## fixme save only used parameters
@@ -104,6 +103,7 @@ def get_args():
     parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='pretrain')
     parser.add_argument('--strategy_name', type=str, default=None)
+    parser.add_argument('--iupac_prediction', action='store_true', default=False)
     parser.add_argument('--ckpt_path', type=str, default=None)
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args

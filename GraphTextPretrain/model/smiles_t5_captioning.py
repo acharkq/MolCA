@@ -1,4 +1,5 @@
 import os
+import contextlib
 from typing import Any, Dict, List, Mapping, Union
 import torch
 import pytorch_lightning as pl
@@ -12,9 +13,10 @@ from rouge_score import rouge_scorer
 from tqdm import tqdm
 import numpy as np
 import torch.distributed as dist
-from peft import LoraConfig, TaskType, PeftModel, get_peft_model
-from transformers import BertTokenizer, AutoTokenizer, OPTForCausalLM, LlamaForCausalLM
-
+from peft import LoraConfig, TaskType #, PeftModel, get_peft_model
+from transformers import BertTokenizer #, AutoTokenizer, OPTForCausalLM, LlamaForCausalLM
+from lavis.models.blip2_models.modeling_t5 import T5Config, T5ForConditionalGeneration
+from transformers import T5TokenizerFast
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -22,7 +24,18 @@ class AttrDict(dict):
         self.__dict__ = self
     
 
-class SmilesCaptionLM(pl.LightningModule):
+class SmilesT5CaptionLM(pl.LightningModule):
+
+    def maybe_autocast(self, dtype=torch.float16):
+        # if on cpu, don't use autocast
+        # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
+        enable_autocast = self.device != torch.device("cpu")
+
+        if enable_autocast:
+            return torch.cuda.amp.autocast(dtype=dtype)
+        else:
+            return contextlib.nullcontext()
+        
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         if self.llm_tune != 'full':
             to_be_removed = []
@@ -53,30 +66,34 @@ class SmilesCaptionLM(pl.LightningModule):
         self.llm_name = args.llm_name
         
         ## initialize opt model
-        self.tokenizer = AutoTokenizer.from_pretrained(self.llm_name, use_fast=False, padding_side='right')
+        self.tokenizer = T5TokenizerFast.from_pretrained(self.llm_name)
+        t5_config = T5Config.from_pretrained(self.llm_name)
+        t5_config.dense_act_fn = "gelu"
         self.tokenizer.add_special_tokens({'pad_token': '<pad>'})
         
-        if self.llm_name == 'facebook/galactica-125m':
-            self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name)
-        else:
-            self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name, torch_dtype=torch.float16)
+        # if self.llm_name == 'facebook/galactica-125m':
+        #     self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name)
+        # else:
+        self.llm_model = T5ForConditionalGeneration.from_pretrained(self.llm_name, config=t5_config)
         self.llm_model.resize_token_embeddings(len(self.tokenizer) + 1) # for the special placeholder token
-
-        if self.llm_tune == 'lora':
-            if args.peft_dir:
-                self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
-            else:
-                if args.peft_config:
-                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-                else:
-                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                self.peft_config = peft_config
-                self.llm_model = get_peft_model(self.llm_model, peft_config)
-                self.llm_model.print_trainable_parameters()
-        elif args.llm_tune == 'full':
-            pass
-        else:
-            raise NotImplementedError()
+        # for name, param in self.llm_model.named_parameters():
+        #     # param.requires_grad = False
+        #     param.data = param.data.to(torch.float16)
+        # if self.llm_tune == 'lora':
+        #     if args.peft_dir:
+        #         self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
+        #     else:
+        #         if args.peft_config:
+        #             peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+        #         else:
+        #             peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+        #         self.peft_config = peft_config
+        #         self.llm_model = get_peft_model(self.llm_model, peft_config)
+        #         self.llm_model.print_trainable_parameters()
+        # elif args.llm_tune == 'full':
+        #     pass
+        # else:
+        #     raise NotImplementedError()
 
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.tokenizer(
@@ -113,42 +130,41 @@ class SmilesCaptionLM(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        if dataloader_idx == 0:
-            smiles_tokens, caption_tokens = batch
-            device = smiles_tokens.input_ids.device
-            batch_size = smiles_tokens.input_ids.shape[0]
-            attention_mask = torch.cat((smiles_tokens.attention_mask, caption_tokens.attention_mask), dim=1)
-            empty_targets = torch.ones(smiles_tokens.attention_mask.size(), dtype=torch.long).to(device).fill_(-100)
-            targets = caption_tokens.input_ids.masked_fill(
-                caption_tokens.input_ids == self.tokenizer.pad_token_id, -100
-            )
-            targets = torch.cat([empty_targets, targets], dim=1)
-            input_ids = torch.cat((smiles_tokens.input_ids, caption_tokens.input_ids), dim=1)
-            outputs = self.llm_model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                return_dict=True,
-                labels=targets,
-            )
-            loss = outputs.loss
-            self.log('val_loss', float(loss), batch_size=batch_size, sync_dist=True)
-            return loss
-        elif dataloader_idx == 1:
-            if (self.current_epoch+1) % self.caption_eval_epoch != 0:
-                return 
-            smiles_tokens, captions = batch
-            samples = {'prompt_tokens': smiles_tokens}
-            ###============== Captioning Results ===================###
-            predictions = self.generate(
-                samples,
-                do_sample=self.do_sample,
-                num_beams=self.num_beams,
-                max_length=self.max_len,
-                min_length=self.min_len,
-            )
-            return predictions, captions
-        else:
-            raise NotImplementedError
+        with self.maybe_autocast(dtype=torch.bfloat16):
+            if dataloader_idx == 0:
+                smiles_tokens, caption_tokens = batch
+                batch_size = smiles_tokens.input_ids.shape[0]
+
+                targets = caption_tokens.input_ids.masked_fill(
+                    caption_tokens.input_ids == self.tokenizer.pad_token_id, -100
+                )
+                inputs_embeds = self.llm_model.encoder.embed_tokens(smiles_tokens.input_ids)
+                outputs = self.llm_model(
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=smiles_tokens.attention_mask,
+                    decoder_attention_mask=caption_tokens.attention_mask,
+                    return_dict=True,
+                    labels=targets,
+                )
+                loss = outputs.loss
+                self.log('val_loss', float(loss), batch_size=batch_size, sync_dist=True)
+                return loss
+            elif dataloader_idx == 1:
+                if (self.current_epoch+1) % self.caption_eval_epoch != 0:
+                    return 
+                smiles_tokens, captions = batch
+                samples = {'prompt_tokens': smiles_tokens}
+                ###============== Captioning Results ===================###
+                predictions = self.generate(
+                    samples,
+                    do_sample=self.do_sample,
+                    num_beams=self.num_beams,
+                    max_length=self.max_len,
+                    min_length=self.min_len,
+                )
+                return predictions, captions
+            else:
+                raise NotImplementedError
     
     @torch.no_grad()
     def generate(
@@ -164,27 +180,28 @@ class SmilesCaptionLM(pl.LightningModule):
         num_captions=1,
         temperature=1
         ):
-        prompt_tokens = samples['prompt_tokens']
-        inputs_embeds = self.llm_model.get_input_embeddings()(prompt_tokens.input_ids)
-        outputs = self.llm_model.generate(
-            inputs_embeds=inputs_embeds,
-            attention_mask=prompt_tokens.attention_mask,
-            do_sample=do_sample,
-            top_p=top_p,
-            temperature=temperature,
-            num_beams=num_beams,
-            max_length=max_length,
-            min_length=min_length,
-            # pad_token_id=self.pad_token_id,
-            eos_token_id=self.eos_token_id,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            num_return_sequences=num_captions,
-            # use_cache=False,
-        )
-        output_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        output_text = [text.strip() for text in output_text]
-        return output_text
+        with self.maybe_autocast(dtype=torch.bfloat16):
+            prompt_tokens = samples['prompt_tokens']
+            inputs_embeds = self.llm_model.get_input_embeddings()(prompt_tokens.input_ids)
+            outputs = self.llm_model.generate(
+                inputs_embeds=inputs_embeds,
+                attention_mask=prompt_tokens.attention_mask,
+                do_sample=do_sample,
+                top_p=top_p,
+                temperature=temperature,
+                num_beams=num_beams,
+                max_length=max_length,
+                min_length=min_length,
+                # pad_token_id=self.pad_token_id,
+                eos_token_id=self.eos_token_id,
+                repetition_penalty=repetition_penalty,
+                length_penalty=length_penalty,
+                num_return_sequences=num_captions,
+                # use_cache=False,
+            )
+            output_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            output_text = [text.strip() for text in output_text]
+            return output_text
     
     def validation_epoch_end(self, outputs):
         if (self.current_epoch+1) % self.caption_eval_epoch != 0:
@@ -216,28 +233,25 @@ class SmilesCaptionLM(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:
-            self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
-        
-        smiles_tokens, caption_tokens = batch
-        batch_size = smiles_tokens.input_ids.shape[0]
-        device = smiles_tokens.input_ids.device
+            self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)        
+        with self.maybe_autocast(dtype=torch.bfloat16):
+            smiles_tokens, caption_tokens = batch
+            batch_size = smiles_tokens.input_ids.shape[0]
 
-        attention_mask = torch.cat((smiles_tokens.attention_mask, caption_tokens.attention_mask), dim=1)
-        empty_targets = torch.ones(smiles_tokens.attention_mask.size(), dtype=torch.long).to(device).fill_(-100)
-        targets = caption_tokens.input_ids.masked_fill(
-            caption_tokens.input_ids == self.tokenizer.pad_token_id, -100
-        )
-        targets = torch.cat([empty_targets, targets], dim=1)
-        input_ids = torch.cat((smiles_tokens.input_ids, caption_tokens.input_ids), dim=1)
-        outputs = self.llm_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            return_dict=True,
-            labels=targets,
-        )
-        loss = outputs.loss
-        self.log('train_loss', float(loss), batch_size=batch_size, sync_dist=True)
-        return {"loss": loss}
+            targets = caption_tokens.input_ids.masked_fill(
+                caption_tokens.input_ids == self.tokenizer.pad_token_id, -100
+            )
+            inputs_embeds = self.llm_model.encoder.embed_tokens(smiles_tokens.input_ids)
+            outputs = self.llm_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=smiles_tokens.attention_mask,
+                decoder_attention_mask=caption_tokens.attention_mask,
+                return_dict=True,
+                labels=targets,
+            )
+            loss = outputs.loss
+            self.log('train_loss', float(loss), batch_size=batch_size, sync_dist=True)
+            return {"loss": loss}
 
     @staticmethod
     def add_model_specific_args(parent_parser):

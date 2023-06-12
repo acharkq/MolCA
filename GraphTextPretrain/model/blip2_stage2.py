@@ -315,12 +315,14 @@ def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
         gt_tokens = list(filter(('[PAD]').__ne__, gt_tokens))
         gt_tokens = list(filter(('[CLS]').__ne__, gt_tokens))
         gt_tokens = list(filter(('[SEP]').__ne__, gt_tokens))
+        gt_tokens = list(filter(('[DEC]').__ne__, gt_tokens))
 
         out_tokens = tokenizer.tokenize(out, truncation=True, max_length=text_trunc_length,
                                             padding='max_length')
         out_tokens = list(filter(('[PAD]').__ne__, out_tokens))
         out_tokens = list(filter(('[CLS]').__ne__, out_tokens))
         out_tokens = list(filter(('[SEP]').__ne__, out_tokens))
+        out_tokens = list(filter(('[DEC]').__ne__, out_tokens))
 
         references.append([gt_tokens])
         hypotheses.append(out_tokens)
