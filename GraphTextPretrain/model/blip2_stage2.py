@@ -24,9 +24,24 @@ class AttrDict(dict):
 
 def load_ignore_unexpected(model, state_dict):
     keys = set(model.state_dict().keys())
-    # print(state_dict.keys())
     state_dict = {k: v for k, v in state_dict.items() if k in keys}
+    
+    ## try to print keys that are not included
     model.load_state_dict(state_dict, strict=True)
+
+
+# def load_ignore_mismatch(model, state_dict):
+#     keys = set(model.state_dict().keys())
+#     extra_keys = set()
+#     for key in state_dict:
+#         if key not in keys:
+#             extra_keys.add(key)
+#     missing_keys = set()
+#     for key in keys:
+#         if key not in state_dict:
+#             missing_keys.add(key)
+#     ## try to print keys that are not included
+#     model.load_state_dict(state_dict, strict=False)
     
 
 def get_module_state_dict(state_dict, module_name):
@@ -86,13 +101,22 @@ class Blip2Stage2(pl.LightningModule):
     def load_from_stage1_checkpoint(self, path):
         ckpt = torch.load(path, map_location='cpu')
         state_dict = ckpt['state_dict']
+        graph_encoder_dict = get_module_state_dict(state_dict, 'blip2qformer.graph_encoder')
         qformer_dict = get_module_state_dict(state_dict, 'blip2qformer.Qformer')
         ln_graph_dict = get_module_state_dict(state_dict, 'blip2qformer.ln_graph')
         qs_weight = get_module_state_dict(state_dict, 'blip2qformer.query_tokens')
         load_ignore_unexpected(self.blip2opt.Qformer, qformer_dict)
+        self.blip2opt.graph_encoder.load_state_dict(graph_encoder_dict)
         self.blip2opt.ln_graph.load_state_dict(ln_graph_dict)
         self.blip2opt.query_tokens.data.copy_(qs_weight)
         return self
+    
+    # def load_from_stage1_checkpoint(self, path):
+    #     ckpt = torch.load(path, map_location='cpu')
+    #     state_dict = ckpt['state_dict']
+    #     state_dict = {k[13:]: v for k,v in state_dict.items()}
+    #     load_ignore_mismatch(self.blip2opt, state_dict)
+    #     return self
     
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
