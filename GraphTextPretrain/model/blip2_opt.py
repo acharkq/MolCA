@@ -435,42 +435,42 @@ class Blip2OPT(Blip2Base):
         graphs = samples['graphs']
         prompt_tokens = samples['prompt_tokens']
         # prompt_lens = samples['prompt_lens']
-        with self.maybe_autocast():
-            graph_embeds, graph_masks = self.graph_encoder(graphs)
-            graph_embeds = self.ln_graph(graph_embeds)
+        # with self.maybe_autocast():
+        graph_embeds, graph_masks = self.graph_encoder(graphs)
+        graph_embeds = self.ln_graph(graph_embeds)
 
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks,
-                return_dict=True,
-            )
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
-            
-            prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
+        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=graph_embeds,
+            encoder_attention_mask=graph_masks,
+            return_dict=True,
+        )
+        mol_tokens = self.opt_proj(query_output.last_hidden_state)
+        
+        prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
+        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
 
-            outputs = self.opt_model.generate(
-                inputs_embeds=prompt_embeds,
-                attention_mask=prompt_tokens.attention_mask,
-                do_sample=do_sample,
-                top_p=top_p,
-                temperature=temperature,
-                num_beams=num_beams,
-                max_length=max_length,
-                min_length=min_length,
-                # pad_token_id=self.pad_token_id,
-                eos_token_id=self.eos_token_id,
-                repetition_penalty=repetition_penalty,
-                length_penalty=length_penalty,
-                num_return_sequences=num_captions,
-                # use_cache=False,
-            )
-            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            
-            output_text = [text.strip() for text in output_text]
-            return output_text
+        outputs = self.opt_model.generate(
+            inputs_embeds=prompt_embeds,
+            attention_mask=prompt_tokens.attention_mask,
+            do_sample=do_sample,
+            top_p=top_p,
+            temperature=temperature,
+            num_beams=num_beams,
+            max_length=max_length,
+            min_length=min_length,
+            # pad_token_id=self.pad_token_id,
+            eos_token_id=self.eos_token_id,
+            repetition_penalty=repetition_penalty,
+            length_penalty=length_penalty,
+            num_return_sequences=num_captions,
+            # use_cache=False,
+        )
+        output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        
+        output_text = [text.strip() for text in output_text]
+        return output_text
 
     @torch.no_grad()
     def blip_qa(
