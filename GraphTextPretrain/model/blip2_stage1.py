@@ -463,7 +463,7 @@ def eval_retrieval_inbatch_v2(model, dataloader, device=None):
         t2g_acc += float((t2g_rank == 0).sum())
         g2t_rec20 += float((g2t_rank < 20).sum())
         t2g_rec20 += float((t2g_rank < 20).sum())
-        
+
         allcnt += B
 
         graph_rep_total.append(graph_rep.cpu())

@@ -15,7 +15,7 @@ from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, Lor
 from ogb.utils import smiles2graph
 from torch_geometric.loader.dataloader import Collater
 from torch_geometric.data import Data
-
+import numpy as np
 # from lavis.common.registry import registry
 # from lavis.models.base_model import all_gather_with_grad, concat_all_gather
 from lavis.models.blip2_models.blip2 import (
@@ -641,3 +641,64 @@ class Blip2OPT(Blip2Base):
             output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
             output_text = [text.strip() for text in output_text]
             return output_text
+        
+    @torch.no_grad()
+    def probe_qformer(
+        self, 
+        batch,
+        do_sample=False,
+        num_beams=5,
+        max_length=128,
+        min_length=1,
+        top_p=0.9,
+        repetition_penalty=1.0,
+        length_penalty=1.0,
+        num_captions=1,
+        temperature=1,
+        ):
+        with self.maybe_autocast():
+            device = next(self.parameters()).device
+            
+            graphs, smiles_prompt_tokens, texts = batch
+            graphs = graphs.to(device)
+            ## graph forward
+            graph_embeds, graph_masks = self.graph_encoder(graphs)
+            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=graph_embeds,
+                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                return_dict=True,
+            )
+            mol_tokens = self.opt_proj(query_output.last_hidden_state) # shape = [mol_num, num_query_token, D]
+            B, num_q, D = mol_tokens.shape
+            
+            ## 
+            embed_func = self.opt_model.get_input_embeddings()
+            embed_weight = embed_func.weight # shape = [vocab_size, D]
+            
+            dis_metric = 'cos'
+            topk = 10
+            if dis_metric == 'cos':
+                mol_tokens = F.normalize(mol_tokens, dim=-1, p=2)
+                embed_weight = F.normalize(embed_weight, dim=-1, p=2)
+                sim = mol_tokens.flatten(0, 1) @ embed_weight.T # shape = [mol_num * num_query_token, vocab_size]
+            elif dis_metric == 'euc':
+                sim = - torch.cdist(mol_tokens.flatten(0, 1), embed_weight, p=2)
+                assert sim.shape == (B * num_q, embed_weight.shape[0])
+            else:
+                raise NotImplementedError()
+            _, topk_ids = torch.topk(sim, k=topk, dim=-1) # shape = [mol_num * num_query_token, k]
+            knn_decode_strings = self.opt_tokenizer.batch_decode(topk_ids.flatten())
+            knn_decode_strings = np.asarray(knn_decode_strings).reshape(B, num_q, topk).tolist() # shape = [mol_num, num_query_token, topk]
+            knn_decode_strings = [[' '.join(ii) for ii in i] for i in knn_decode_strings] # shape = [mol_num, num_query_token]
+            if False:
+                ### print for presentation
+                assert len(knn_decode_strings) == len(texts)
+                for predict, text in zip(knn_decode_strings, texts):
+                    print('----------------------------')
+                    print(predict)
+                    print(text)
+            return knn_decode_strings
+            

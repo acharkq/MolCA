@@ -42,7 +42,7 @@ def get_module_state_dict(state_dict, module_name):
                 return value
             module_state_dict[key] = value
     return module_state_dict
-# peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
+
 class Blip2MPP(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         to_be_removed = []

@@ -20,23 +20,24 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-
-from ...activations import ACT2FN
-from ...modeling_outputs import (
+from transformers.activations import ACT2FN
+# from ...activations import ACT2FN
+from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
     QuestionAnsweringModelOutput,
     SequenceClassifierOutputWithPast,
 )
-from ...modeling_utils import PreTrainedModel
-from ...utils import (
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     logging,
     replace_return_docstrings,
 )
-from .configuration_opt import OPTConfig
+from transformers.models.opt.configuration_opt import OPTConfig
+# from .configuration_opt 
 
 
 logger = logging.get_logger(__name__)
@@ -1058,7 +1059,7 @@ class OPTForSequenceClassification(OPTPreTrainedModel):
         transformer_outputs = self.model(
             input_ids,
             past_key_values=past_key_values,
-            attention_mask=attention_mask,
+            attention_mask=attention_mask, # shape = [B, max_len]
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
@@ -1067,53 +1068,19 @@ class OPTForSequenceClassification(OPTPreTrainedModel):
             return_dict=return_dict,
         )
         hidden_states = transformer_outputs[0]
-        logits = self.score(hidden_states)
+        logits = self.score(hidden_states) # shape = [B, max_len, D]
+        # print('------------------')
+        # print(logits.shape)
 
-        if input_ids is not None:
-            batch_size, sequence_length = input_ids.shape[:2]
-        else:
-            batch_size, sequence_length = inputs_embeds.shape[:2]
-
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
-        else:
-            if input_ids is not None:
-                sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
-            else:
-                sequence_lengths = -1
-                logger.warning(
-                    f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
-                    "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
-                )
-
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        denom = torch.sum(attention_mask.float(), -1, keepdim=True) # shape = [B, 1]
+        # print(denom.shape)
+        pooled_logits = torch.sum(logits * attention_mask.unsqueeze(-1), dim=1) # shape = [B, D]
+        # print(pooled_logits.shape)
+        pooled_logits = pooled_logits / denom
+        # print(pooled_logits.shape)
+    
 
         loss = None
-        if labels is not None:
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(pooled_logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(pooled_logits, labels)
-        if not return_dict:
-            output = (pooled_logits,) + transformer_outputs[1:]
-            return ((loss,) + output) if loss is not None else output
-
         return SequenceClassifierOutputWithPast(
             loss=loss,
             logits=pooled_logits,

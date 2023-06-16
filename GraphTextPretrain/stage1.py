@@ -8,6 +8,7 @@ import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from model.blip2_stage1 import Blip2Stage1
 from data_provider.stage1_dm import Stage1DM
+from data_provider.stage1_kvplm_dm import Stage1KVPLMDM
 
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -30,7 +31,10 @@ def main(args):
     print('total params:', sum(p.numel() for p in model.parameters()))
 
     # data
-    dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
+    if args.root.find('kv') >= 0:
+        dm = Stage1KVPLMDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
+    else:
+        dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
     dm.train_dataset.tokenizer = model.blip2qformer.tokenizer
     dm.val_dataset.tokenizer = model.blip2qformer.tokenizer
     model.val_match_loader = dm.val_match_loader
@@ -43,7 +47,12 @@ def main(args):
                                          save_top_k=-1))
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
-    strategy = strategies.DDPSpawnStrategy(find_unused_parameters=find_unused_parameters)
+    if len(args.devices.split(',')) > 1:
+        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=find_unused_parameters)
+    else:
+        strategy = None
+        args.devices = eval(args.devices)
+        print(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
