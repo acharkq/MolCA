@@ -57,12 +57,13 @@ def main(args):
     dm.init_tokenizer(tokenizer)
 
     callbacks = []
-    ## fixme save only used parameters
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='{epoch:02d}', 
-                                         every_n_epochs=10, 
-                                         save_last=True, 
-                                         save_top_k=-1))
+    if args.root.find('MoleculeNet') < 0:
+        ## fixme save only used parameters
+        callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                            filename='{epoch:02d}', 
+                                            every_n_epochs=10, 
+                                            save_last=True, 
+                                            save_top_k=-1))
     args.devices = eval(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
@@ -110,6 +111,24 @@ def get_args():
     print("=========================================")
     return args
 
-if __name__ == '__main__':
-    main(get_args())
 
+def run_moleculenet(args):
+    dataset_list = ['bace', 'bbbp', 'clintox', 'toxcast', 'sider', 'tox21']
+    print('running moleculenet')
+    args.max_epochs = 100
+    filename = args.filename
+    for dataset in dataset_list:
+        args.filename = f"{filename}/{dataset}"
+        print(args.filename)
+        for seed in range(0, 3):
+            args.seed = seed
+            args.tuning_dataset = dataset
+            main(args)
+
+if __name__ == '__main__':
+    args = get_args()
+    if args.root.find('MoleculeNet') >= 0:
+        run_moleculenet(args)
+    else:
+        main(args)
+    

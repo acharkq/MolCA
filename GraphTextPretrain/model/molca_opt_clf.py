@@ -141,7 +141,6 @@ class MolCAOPTClf(Blip2Base):
         if not self.tune_gnn:
             graph_embeds = graph_embeds.detach()
         graph_embeds = self.ln_graph(graph_embeds, graph_masks)
-        device = graph_embeds.device
         query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
         query_output = self.Qformer.bert(
             query_embeds=query_tokens,
@@ -164,7 +163,7 @@ class MolCAOPTClf(Blip2Base):
             return logits
         
         ## add together the valid loss
-        loss_mat = self.loss_func(logits, ((graphs.y + 1) / 2).to(logits.dtype))
+        loss_mat = self.loss_func(logits, ((graphs.y + 1) / 2))
         is_valid = graphs.y.abs() > 0
         loss_mat = torch.where(is_valid, loss_mat, torch.zeros_like(loss_mat))  # shape = [N, C]
         loss = torch.sum(loss_mat)/torch.sum(is_valid)

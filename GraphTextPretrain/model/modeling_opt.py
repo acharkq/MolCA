@@ -1069,17 +1069,11 @@ class OPTForSequenceClassification(OPTPreTrainedModel):
         )
         hidden_states = transformer_outputs[0]
         logits = self.score(hidden_states) # shape = [B, max_len, D]
-        # print('------------------')
-        # print(logits.shape)
 
-        denom = torch.sum(attention_mask.float(), -1, keepdim=True) # shape = [B, 1]
-        # print(denom.shape)
+        denom = torch.sum(attention_mask, -1, keepdim=True) # shape = [B, 1]
         pooled_logits = torch.sum(logits * attention_mask.unsqueeze(-1), dim=1) # shape = [B, D]
-        # print(pooled_logits.shape)
         pooled_logits = pooled_logits / denom
-        # print(pooled_logits.shape)
     
-
         loss = None
         return SequenceClassifierOutputWithPast(
             loss=loss,
