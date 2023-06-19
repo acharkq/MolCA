@@ -108,12 +108,13 @@ class SmilesT5CaptionLM(pl.LightningModule):
         self.save_hyperparameters(args)
     
     def configure_optimizers(self):
+        self.trainer.reset_train_dataloader()
+        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
-        # warmup_steps = min(self.args.warmup_steps, len(self.train_dataloader))
         if self.args.scheduler == 'linear_warmup_cosine_lr':
-            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.warmup_steps, self.args.warmup_lr)
+            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
         elif self.args.scheduler == 'linear_warmup_step_lr':
-            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, self.args.warmup_steps)
+            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, warmup_steps)
         elif self.args.scheduler == 'None':
             self.scheduler = None
         else:
@@ -277,6 +278,7 @@ class SmilesT5CaptionLM(pl.LightningModule):
         parser.add_argument('--llm_tune', type=str, default='freeze')
         parser.add_argument('--peft_dir', type=str, default='')
 
+        parser.add_argument('--save_every_n_epochs', type=int, default=None)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

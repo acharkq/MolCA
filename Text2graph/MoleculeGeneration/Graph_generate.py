@@ -220,7 +220,7 @@ def MolTransfer(x, adj, atomic_num_list):
 
 def tokenizer_text(text, text_max_len):
     # tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
-    tokenizer = AutoTokenizer.from_pretrained('scibert_scivocab_uncased/')
+    tokenizer = BertTokenizer.from_pretrained('./scibert_scivocab_uncased/')
     sentence_token = tokenizer(text=text,
                                truncation=True,
                                padding='max_length',

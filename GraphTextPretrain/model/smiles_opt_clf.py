@@ -37,21 +37,21 @@ class AttrDict(dict):
     
 
 class SmilesClf(pl.LightningModule):
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        if self.llm_tune != 'full':
-            to_be_removed = []
-            for key in checkpoint['state_dict']:
-                if key.startswith('llm_model'):
-                    to_be_removed.append(key)
-            for key in to_be_removed:
-                checkpoint['state_dict'].pop(key)
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    #     if self.llm_tune != 'full':
+    #         to_be_removed = []
+    #         for key in checkpoint['state_dict']:
+    #             if key.startswith('llm_model'):
+    #                 to_be_removed.append(key)
+    #         for key in to_be_removed:
+    #             checkpoint['state_dict'].pop(key)
 
-        if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
-            if self.local_rank == 0: # manually fix a bug in peft module
-                peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
-                self.llm_model.peft_config['default'] = peft_config
-                self.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-        return super().on_save_checkpoint(checkpoint)
+    #     if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
+    #         if self.local_rank == 0: # manually fix a bug in peft module
+    #             peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
+    #             self.llm_model.peft_config['default'] = peft_config
+    #             self.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
+    #     return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):
         super().__init__()
@@ -98,12 +98,13 @@ class SmilesClf(pl.LightningModule):
         self.save_hyperparameters(args)
     
     def configure_optimizers(self):
+        self.trainer.reset_train_dataloader()
+        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
-        # warmup_steps = min(self.args.warmup_steps, len(self.train_dataloader))
         if self.args.scheduler == 'linear_warmup_cosine_lr':
-            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.warmup_steps, self.args.warmup_lr)
+            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
         elif self.args.scheduler == 'linear_warmup_step_lr':
-            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, self.args.warmup_steps)
+            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, warmup_steps)
         elif self.args.scheduler == 'None':
             self.scheduler = None
         else:
@@ -112,7 +113,7 @@ class SmilesClf(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        _, prompt_tokens, labels = batch
+        graphs, prompt_tokens = batch
         prompt_embeds = self.llm_model.get_input_embeddings()(prompt_tokens.input_ids)
         outputs = self.llm_model(
             inputs_embeds=prompt_embeds,
@@ -120,7 +121,7 @@ class SmilesClf(pl.LightningModule):
             return_dict=True,
         )
         logits = outputs.logits
-        return logits.cpu(), labels.cpu()
+        return logits.cpu(), graphs.y.cpu()
     
     def validation_epoch_end(self, outputs):
         assert self.trainer.world_size == 1
@@ -141,8 +142,8 @@ class SmilesClf(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         if self.scheduler:
             self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
-        _, prompt_tokens, labels = batch
-        batch_size = labels.shape[0]
+        graphs, prompt_tokens = batch
+        batch_size = graphs.y.shape[0]
         prompt_embeds = self.llm_model.get_input_embeddings()(prompt_tokens.input_ids)
         outputs = self.llm_model(
             inputs_embeds=prompt_embeds,
@@ -150,7 +151,7 @@ class SmilesClf(pl.LightningModule):
             return_dict=True,
         )
         logits = outputs.logits
-        loss = self.loss_func(logits, ((labels + 1) / 2).to(logits.dtype))
+        loss = self.loss_func(logits, ((graphs.y + 1) / 2).to(logits.dtype))
         self.log("train loss", float(loss), batch_size=batch_size)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size)
         return loss
@@ -179,6 +180,7 @@ class SmilesClf(pl.LightningModule):
         parser.add_argument('--llm_tune', type=str, default='freeze')
         parser.add_argument('--peft_dir', type=str, default='')
 
+        parser.add_argument('--save_every_n_epochs', type=int, default=None)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

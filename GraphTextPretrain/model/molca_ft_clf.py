@@ -53,27 +53,27 @@ def get_module_state_dict(state_dict, module_name):
     return module_state_dict
 
 class MolCAClf(pl.LightningModule):
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        if self.llm_tune != 'full':
-            to_be_removed = []
-            for key in checkpoint['state_dict']:
-                if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
-                    to_be_removed.append(key)
-            for key in to_be_removed:
-                checkpoint['state_dict'].pop(key)
-        if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
-            if self.local_rank == 0: # manually fix a bug in peft module
-                if self.args.peft_config:
-                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-                else:
-                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
-                if hasattr(self.blip2opt, 'opt_model'):
-                    self.blip2opt.opt_model.peft_config['default'] = peft_config
-                    self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-                elif hasattr(self.blip2opt, 'llm_model'):
-                    self.blip2opt.llm_model.peft_config['default'] = peft_config
-                    self.blip2opt.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-        return super().on_save_checkpoint(checkpoint)
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    #     if self.llm_tune != 'full':
+    #         to_be_removed = []
+    #         for key in checkpoint['state_dict']:
+    #             if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
+    #                 to_be_removed.append(key)
+    #         for key in to_be_removed:
+    #             checkpoint['state_dict'].pop(key)
+    #     if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
+    #         if self.local_rank == 0: # manually fix a bug in peft module
+    #             if self.args.peft_config:
+    #                 peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+    #             else:
+    #                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
+    #             if hasattr(self.blip2opt, 'opt_model'):
+    #                 self.blip2opt.opt_model.peft_config['default'] = peft_config
+    #                 self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
+    #             elif hasattr(self.blip2opt, 'llm_model'):
+    #                 self.blip2opt.llm_model.peft_config['default'] = peft_config
+    #                 self.blip2opt.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
+    #     return super().on_save_checkpoint(checkpoint)
     
     def __init__(self, args):
         super().__init__()
@@ -97,12 +97,13 @@ class MolCAClf(pl.LightningModule):
 
     
     def configure_optimizers(self):
+        self.trainer.reset_train_dataloader()
+        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
-        # warmup_steps = min(self.args.warmup_steps, len(self.train_dataloader))
         if self.args.scheduler == 'linear_warmup_cosine_lr':
-            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.warmup_steps, self.args.warmup_lr)
+            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
         elif self.args.scheduler == 'linear_warmup_step_lr':
-            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, self.args.warmup_steps)
+            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, warmup_steps)
         elif self.args.scheduler == 'None':
             self.scheduler = None
         else:
@@ -179,6 +180,7 @@ class MolCAClf(pl.LightningModule):
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
+        parser.add_argument('--save_every_n_epochs', type=int, default=None)
         ## lora config
         parser.add_argument('--lora_r', type=int, default=8)
         parser.add_argument('--lora_alpha', type=int, default=32)

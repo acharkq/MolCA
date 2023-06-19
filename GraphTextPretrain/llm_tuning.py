@@ -44,7 +44,7 @@ def main(args):
     ## fixme save only used parameters
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
                                          filename='{epoch:02d}', 
-                                         every_n_epochs=10, 
+                                         every_n_epochs=args.save_every_n_epochs, 
                                          save_last=True, 
                                          save_top_k=-1))
     if len(args.devices.split(',')) > 1:

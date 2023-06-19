@@ -28,7 +28,8 @@ def main(args):
     else:
         dm = ClfDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, None, args)
 
-    args.num_labels = dm.train_dataset.num_labels
+    # dm.train_dataset.num_label
+    # args.num_labels = dm.train_dataset.num_labels
 
     if args.smiles_only:
         print('running smiles model')
@@ -44,7 +45,7 @@ def main(args):
         model = model_cls(args)
         ckpt = torch.load(args.stage2_path, map_location='cpu')
         model.load_state_dict(ckpt['state_dict'], strict=False)
-        print(f"loaded stage2 model from {args.stage1_path}")
+        print(f"loaded stage2 model from {args.stage2_path}")
     else:
         model = model_cls(args)
     print('total params:', sum(p.numel() for p in model.parameters()))
@@ -61,10 +62,11 @@ def main(args):
         ## fixme save only used parameters
         callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
                                             filename='{epoch:02d}', 
-                                            every_n_epochs=10, 
+                                            every_n_epochs=args.save_every_n_epochs, 
                                             save_last=True, 
                                             save_top_k=-1))
-    args.devices = eval(args.devices)
+    if not isinstance(args.devices, list):
+        args.devices = eval(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     trainer = Trainer.from_argparse_args(args,
                                          callbacks=callbacks,
@@ -113,12 +115,15 @@ def get_args():
 
 
 def run_moleculenet(args):
-    dataset_list = ['bace', 'bbbp', 'clintox', 'toxcast', 'sider', 'tox21']
+    dataset_list = ['clintox', 'toxcast', 'sider', 'tox21']
+    num_task_dict = {'tox21': 12, 'hiv': 1, 'muv': 17, 'bace': 1,
+                         'bbbp': 1, 'toxcast': 617, 'sider': 27, 'clintox': 2}
     print('running moleculenet')
     args.max_epochs = 100
     filename = args.filename
     for dataset in dataset_list:
         args.filename = f"{filename}/{dataset}"
+        args.num_labels = num_task_dict[dataset]
         print(args.filename)
         for seed in range(0, 3):
             args.seed = seed

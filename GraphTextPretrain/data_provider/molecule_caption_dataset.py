@@ -70,3 +70,28 @@ class MoleculeCaption(Dataset):
                                         return_tensors='pt',
                                         return_attention_mask=True)
         return sentence_token
+
+if __name__ == '__main__':
+    import numpy as np
+    pretrain = MoleculeCaption('../data/PubChemDataset_v4/pretrain/', 1000, '')
+    train = MoleculeCaption('../data/PubChemDataset_v4/train/', 1000, '')
+    valid = MoleculeCaption('../data/PubChemDataset_v4/valid/', 1000, '')
+    test = MoleculeCaption('../data/PubChemDataset_v4/test/', 1000, '')
+
+    for subset in [pretrain, train, valid, test]:
+        g_lens = []
+        t_lens = []
+        for i in range(len(subset)):  
+            data_graph, text, _ = subset[i]
+            g_lens.append(len(data_graph.x))
+            t_lens.append(len(text.split()))
+            # print(len(data_graph.x))
+        g_lens = np.asarray(g_lens)
+        t_lens = np.asarray(t_lens)
+        print('------------------------')
+        print(g_lens.mean())
+        print(g_lens.min())
+        print(g_lens.max())
+        print(t_lens.mean())
+        print(t_lens.min())
+        print(t_lens.max())

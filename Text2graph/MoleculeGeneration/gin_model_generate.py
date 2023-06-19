@@ -1,10 +1,11 @@
 import torch
 from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import add_self_loops, degree, softmax
+from torch_geometric.utils import add_self_loops, degree, softmax, to_dense_batch
 from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, GlobalAttention, Set2Set
 import torch.nn.functional as F
 from torch_scatter import scatter_add
 from torch_geometric.nn.inits import glorot, zeros
+
 
 num_atom_type = 120 #including the extra mask tokens
 num_chirality_tag = 3
@@ -35,6 +36,7 @@ class GINConv(MessagePassing):
         self.aggr = aggr
 
     def forward(self, x, edge_index, edge_attr, edge_attr0=None, device=torch.device('cpu')):
+        # h = self.gnns[layer](h_list[layer], edge_index, edge_attr, edge_attr0, device)
         #add self loops in the edge space
         # print('--------------------')
         # print('x:', x.shape)
@@ -58,12 +60,14 @@ class GINConv(MessagePassing):
             edge_embeddings = self.edge_embedding1(edge_attr[:,0]) + self.edge_embedding2(edge_attr[:,1])
         else:
             # print(edge_attr0.shape, self.edge_embedding1(torch.arange(4).to(device)).shape, self.edge_embedding2(edge_attr[:,1]).shape)
-            edge1 = torch.mm(edge_attr0, self.edge_embedding1(torch.arange(4).to(device)))
-            edge2 = torch.cat((edge1, self_loop_attr0), dim=0)
+            edge1 = torch.mm(edge_attr0, self.edge_embedding1(torch.arange(4).to(device))) # shape = [E, D]
+            edge2 = torch.cat((edge1, self_loop_attr0), dim=0) # shape = [E+N, D]
             # edge_embeddings = edge2
             if edge1.shape[0]==edge2.shape[0]:
+                # print('using edge attr 1')
                 edge_embeddings = edge2 + self.edge_embedding2(edge_attr[:,1])
             else:
+                # print('using edge attr 2')
                 # print('Edge shape wrong!')
                 # print(edge1.shape, edge2.shape, self.edge_embedding2(edge_attr[:,1]).shape, edge_attr.shape)
                 edge_embeddings = self.edge_embedding1(edge_attr[:,0]) + self.edge_embedding2(edge_attr[:,1])
@@ -327,6 +331,9 @@ class GNN(torch.nn.Module):
         self.batch_norms = torch.nn.ModuleList()
         for layer in range(num_layer):
             self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
+        
+        self.num_features = emb_dim
+        self.cat_grep = True
 
     #def forward(self, x, edge_index, edge_attr):
     def forward(self, *argv):
@@ -349,16 +356,8 @@ class GNN(torch.nn.Module):
         else:
             raise ValueError("unmatched number of arguments.")
 
-        # x = self.x_embedding1(x[:,0]) + self.x_embedding2(x[:,1])
-        # print(x[:,0])
-        # print(self.x_embedding1(x[:,0]).shape, self.x_embedding1(torch.arange(5,9).to(device)).shape) #
-
-        # x = torch.mm(x0[:,0:4], self.x_embedding1(torch.arange(5,9).to(device))) + torch.mm(x0[:,4:5], self.x_embedding1(torch.arange(119,120).to(device))) + self.x_embedding2(x[:,1])
-        # print(atomic_num_list)
         atomic_num_list0 = atomic_num_list[:-1]
-        # print(atomic_num_list0)
         num_ato = len(atomic_num_list0)
-        # print(x0.shape)
         x = torch.mm(x0[:,0:num_ato], self.x_embedding1(torch.tensor(atomic_num_list0).to(device)-1)) + torch.mm(x0[:,-1:], self.x_embedding1(torch.arange(119,120).to(device))) + self.x_embedding2(x[:,1])
 
         h_list = [x]
@@ -387,8 +386,15 @@ class GNN(torch.nn.Module):
         
 
         h_graph = self.pool(node_representation, batch)
+        batch_node, batch_mask = to_dense_batch(node_representation, batch) # shape = [B, n_max, D], 
+        batch_mask = batch_mask.long()
 
-        return h_graph
+        if self.cat_grep:
+            batch_node = torch.cat((h_graph.unsqueeze(1), batch_node), dim=1) # shape = [B, n_max+1, D]
+            batch_mask = torch.cat([torch.ones((batch_mask.shape[0], 1), dtype=torch.long, device=batch.device), batch_mask], dim=1)
+            return batch_node, batch_mask
+        else:
+            return batch_node, batch_mask, h_graph
 
 
 class GNN_graphpred(torch.nn.Module):

@@ -68,12 +68,13 @@ def escape_custom_split_sequence(text):
     return CUSTOM_SEQ_RE.sub(_insert_split_marker, text)
 
 class MPPCollater:
-    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, num_labels):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         self.mol_ph = mol_ph
         self.mol_token_id = mol_token_id
+        self.num_labels = num_labels
         
     def __call__(self, batch):
         graphs, smiles_prompt = zip(*batch)
@@ -100,7 +101,7 @@ class MPPCollater:
                                                   return_tensors='pt',
                                                   return_attention_mask=True)
         if len(graphs.y.shape) == 1:
-            graphs['y'] = graphs.y.reshape(-1, 1)
+            graphs['y'] = graphs.y.reshape(-1, self.num_labels)
         return graphs, smiles_prompt_tokens
 
 
@@ -125,7 +126,7 @@ class MPPSmilesDataset(Dataset):
         self.g_dataset = g_dataset
         self.smiles_list = smiles_list
         self.prompt = prompt
-        self.num_labels = self.get(0)[0].y.shape[-1]
+        # self.num_labels = self.get(0)[0].y.shape[-1]
     
     def __len__(self):
         return len(self.smiles_list)
@@ -193,7 +194,7 @@ class MPPDM(LightningDataModule):
             pin_memory=False,
             drop_last=True,
             persistent_workers=True,
-            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
+            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.args.num_labels),
         )
         return loader
     
@@ -206,7 +207,7 @@ class MPPDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
+            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.args.num_labels),
         )
         test_loader = DataLoader(
             self.test_dataset,
@@ -216,7 +217,7 @@ class MPPDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id),
+            collate_fn=MPPCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.args.num_labels),
         )
         return [val_loader, test_loader]
 

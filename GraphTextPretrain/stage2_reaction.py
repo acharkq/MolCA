@@ -28,7 +28,7 @@ def main(args):
         model = Blip2Stage2(args)
         ckpt = torch.load(args.stage2_path, map_location='cpu')
         model.load_state_dict(ckpt['state_dict'], strict=False)
-        print(f"loaded stage2 model from {args.stage1_path}")
+        print(f"loaded stage2 model from {args.stage2_path}")
     elif args.stage1_path:
         model = Blip2Stage2(args)
         model.load_from_stage1_checkpoint(args.stage1_path)
@@ -53,7 +53,7 @@ def main(args):
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
                                          filename='{epoch:02d}', 
-                                         every_n_epochs=10, 
+                                         every_n_epochs=args.save_every_n_epochs, 
                                          save_last=True, 
                                          save_top_k=-1))
     
