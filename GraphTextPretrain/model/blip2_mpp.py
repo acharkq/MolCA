@@ -224,7 +224,7 @@ class Blip2MPP(pl.LightningModule):
         parser.add_argument('--lora_tuning', action='store_true', default=False)
         parser.add_argument('--peft_dir', type=str, default='')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

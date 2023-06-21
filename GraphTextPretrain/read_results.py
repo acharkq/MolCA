@@ -2,19 +2,31 @@ import argparse
 import pandas as pd
 from pathlib import Path
 import json
+import numpy as np
 from model.blip2_stage2 import caption_evaluate
-from transformers import (set_seed,
-                          TrainingArguments,
-                          Trainer,
-                          GPT2Config,
-                          GPT2Tokenizer,
-                          AdamW, 
-                          get_linear_schedule_with_warmup,
-                          GPT2ForSequenceClassification)
 from transformers import AutoTokenizer, BertTokenizer
 
 pd.options.display.max_rows = 1000
 pd.options.display.max_columns = 1000
+
+
+def print_std(accs, stds, categories, append_mean=False):
+    category_line = ' '.join(categories)
+    if append_mean:
+        category_line += ' Mean'
+    
+    line = ''
+    if stds is None:
+        for acc in accs:
+            line += '{:0.1f} '.format(acc)
+    else:
+        for acc, std in zip(accs, stds):
+            line += '{:0.1f}±{:0.1f} '.format(acc, std)
+    
+    if append_mean:
+        line += '{:0.1f}'.format(sum(accs) / len(accs))
+    print(category_line)
+    print(line)
 
 
 def get_mode(df):
@@ -89,6 +101,34 @@ def read_caption_prediction(args):
         print(cols)
         print(bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score)
 
+def read_mpp_results(args):
+    ds_list = ['bace', 'bbbp', 'clintox', 'toxcast', 'sider', 'tox21']
+    from pathlib import Path
+    results = []
+    stds = []
+    used_ds = []
+    for ds in ds_list:
+        ds_path = Path(args.path) / ds
+        if not ds_path.exists():
+            continue
+        ds_path = ds_path / 'lightning_logs'
+        test_roc_list = []
+        for f in ds_path.glob("version_*"):
+            f = f / 'metrics.csv'
+            df = pd.read_csv(f)
+            df = df[['val roc', 'test roc']]
+            df = df[~df['val roc'].isnull()]
+            array = df.to_numpy()
+            test_roc = array[array[:, 0].argmax(), 1]
+            test_roc_list.append(test_roc)
+        test_roc_list = np.asarray(test_roc_list)
+        test_roc = round(test_roc_list.mean() * 100, 2)
+        results.append(test_roc)
+        test_std = round(test_roc_list.std() * 100, 2)
+        stds.append(test_std)
+        used_ds.append(ds)
+
+    print_std(results, stds, used_ds, True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -101,6 +141,9 @@ if __name__ == '__main__':
     
     if args.path.name == 'predictions.txt':
         read_caption_prediction(args)
+        exit()
+    elif str(args.path).find('mpp') >= 0:
+        read_mpp_results(args)
         exit()
     
     log_hparas = args.path / 'hparams.yaml'

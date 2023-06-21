@@ -54,15 +54,16 @@ def escape_custom_split_sequence(text):
 
 
 class TrainCollater:
-    def __init__(self, tokenizer, text_max_len):
+    def __init__(self, tokenizer, text_max_len, use_gal):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
+        self.use_gal = use_gal
         
     def __call__(self, batch):
         smiles_prompt, texts = zip(*batch)
-        smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
-
+        if self.use_gal:
+            smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
         ## deal with prompt
         smiles_prompt_tokens = self.tokenizer(text=smiles_prompt,
                                               truncation=True,
@@ -83,14 +84,16 @@ class TrainCollater:
 
 
 class InferenceCollater:
-    def __init__(self, tokenizer, text_max_len):
+    def __init__(self, tokenizer, text_max_len, use_gal):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
+        self.use_gal = use_gal
         
     def __call__(self, batch):
         smiles_prompt, texts = zip(*batch)
-        smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
+        if self.use_gal:
+            smiles_prompt = [escape_custom_split_sequence(p) for p in smiles_prompt]
         ## deal with prompt
         smiles_prompt_tokens = self.tokenizer(text=smiles_prompt,
                                               truncation=True,
@@ -126,6 +129,7 @@ class SmilesCaptionDM(LightningDataModule):
         self.val_dataset = SmilesCaption(root + '/valid/', text_max_len, self.prompt)
         self.test_dataset = SmilesCaption(root + '/test/', text_max_len, self.prompt)
         self.init_tokenizer(tokenizer)
+        self.use_gal = args.llm_name.find('gal') >= 0
     
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
@@ -144,7 +148,7 @@ class SmilesCaptionDM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.use_gal),
             )
         elif self.mode == 'ft':
             loader = DataLoader(
@@ -155,7 +159,7 @@ class SmilesCaptionDM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.use_gal),
             )
         else:
             raise NotImplementedError
@@ -170,7 +174,7 @@ class SmilesCaptionDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=TrainCollater(self.tokenizer, self.text_max_len),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.use_gal),
         )
         test_loader = DataLoader(
             self.test_dataset,
@@ -180,7 +184,7 @@ class SmilesCaptionDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.use_gal),
         )
         return [val_loader, test_loader]
     
@@ -193,7 +197,7 @@ class SmilesCaptionDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.use_gal),
         )
         return loader
 

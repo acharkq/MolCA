@@ -70,7 +70,7 @@ class Blip2Stage1(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("GINSimclr")
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         # train mode
         parser.add_argument('--temperature', type=float, default=0.1, help='the temperature of NT_XentLoss')
         # GIN

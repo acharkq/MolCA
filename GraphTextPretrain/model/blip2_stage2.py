@@ -63,7 +63,7 @@ class Blip2Stage2(pl.LightningModule):
                     to_be_removed.append(key)
             for key in to_be_removed:
                 checkpoint['state_dict'].pop(key)
-        if self.args.save_every_n_epochs is not None:
+        if isinstance(self.args.save_every_n_epochs, int) and self.args.save_every_n_epochs > 0:
             if self.llm_tune == 'lora' and (self.current_epoch + 1) % self.args.save_every_n_epochs == 0:
                 if self.local_rank == 0: # manually fix a bug in peft module
                     if self.args.peft_config:
@@ -310,7 +310,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--peft_config', type=str, default=None)
         parser.add_argument('--peft_dir', type=str, default='')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

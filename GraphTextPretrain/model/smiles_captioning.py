@@ -267,7 +267,7 @@ class SmilesCaptionLM(pl.LightningModule):
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         ## lora config
         parser.add_argument('--lora_r', type=int, default=8)
         parser.add_argument('--lora_alpha', type=int, default=32)

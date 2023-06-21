@@ -13,6 +13,24 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 
 
+def rmse(y,f):
+    rmse = np.sqrt(((y - f)**2).mean(axis=0))
+    return rmse
+
+def mse(y,f):
+    mse = float(((y - f)**2).mean(axis=0))
+    return mse
+
+def eval_regression(y_true, y_scores):
+    y_true = y_true.numpy()
+    y_scores = y_scores.numpy()
+    rmse_loss_list = []
+    for i in range(y_true.shape[1]):
+        rmse_loss = rmse(y_true[:, i], y_scores[:, i])
+        rmse_loss_list.append(rmse_loss)
+    mean_rmse = sum(rmse_loss_list) / len(rmse_loss_list)
+    return mean_rmse
+
 def eval_multi_label(y_true, y_scores):
     y_true = y_true.numpy()
     y_scores = y_scores.numpy()
@@ -92,9 +110,15 @@ class SmilesClf(pl.LightningModule):
         else:
             raise NotImplementedError()
 
+        self.task_type = args.task_type
         ## fixme: no prompt yet
         self.prompt = args.prompt
-        self.loss_func = nn.BCEWithLogitsLoss()
+        if self.task_type == 'classification':
+            self.loss_func = nn.BCEWithLogitsLoss(reduction='none')
+        elif self.task_type == 'regression':
+            self.loss_func = nn.MSELoss()
+        else:
+            raise NotImplementedError()
         self.save_hyperparameters(args)
     
     def configure_optimizers(self):
@@ -113,6 +137,8 @@ class SmilesClf(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        if self.args.root.find('MoleculeNet') >= 0 and self.current_epoch == 0:
+            return
         graphs, prompt_tokens = batch
         prompt_embeds = self.llm_model.get_input_embeddings()(prompt_tokens.input_ids)
         outputs = self.llm_model(
@@ -124,6 +150,8 @@ class SmilesClf(pl.LightningModule):
         return logits.cpu(), graphs.y.cpu()
     
     def validation_epoch_end(self, outputs):
+        if self.args.root.find('MoleculeNet') >= 0 and self.current_epoch == 0:
+            return
         assert self.trainer.world_size == 1
         val_output = outputs[0]
         test_output = outputs[1]
@@ -134,10 +162,18 @@ class SmilesClf(pl.LightningModule):
         test_logits = torch.cat(test_logits, dim=0)
         test_labels = torch.cat(test_labels, dim=0)
 
-        val_roc = eval_multi_label(val_labels, val_logits)
-        test_roc = eval_multi_label(test_labels, test_logits)
-        self.log("val roc", float(val_roc))
-        self.log("test roc", float(test_roc))
+        if self.task_type == 'classification':
+            val_roc = eval_multi_label(val_labels, val_logits)
+            test_roc = eval_multi_label(test_labels, test_logits)
+            self.log("val roc", float(val_roc))
+            self.log("test roc", float(test_roc))
+        elif self.task_type == 'regression':
+            val_rmse_loss = eval_regression(val_labels, val_logits)
+            test_rmse_loss = eval_regression(test_labels, test_logits)
+            self.log("val rmse", float(val_rmse_loss))
+            self.log("test rmse", float(test_rmse_loss))
+        else:
+            raise NotImplementedError()
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:
@@ -151,7 +187,16 @@ class SmilesClf(pl.LightningModule):
             return_dict=True,
         )
         logits = outputs.logits
-        loss = self.loss_func(logits, ((graphs.y + 1) / 2).to(logits.dtype))
+        if self.task_type == 'classification':
+            loss_mat = self.loss_func(logits, ((graphs.y + 1) / 2))
+            is_valid = graphs.y.abs() > 0
+            loss_mat = torch.where(is_valid, loss_mat, torch.zeros_like(loss_mat))  # shape = [N, C]
+            loss = torch.sum(loss_mat)/torch.sum(is_valid)
+        elif self.task_type == 'regression':
+            loss = self.loss_func(logits, graphs.y)
+        else:
+            raise NotImplementedError()
+        
         self.log("train loss", float(loss), batch_size=batch_size)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size)
         return loss
@@ -180,7 +225,7 @@ class SmilesClf(pl.LightningModule):
         parser.add_argument('--llm_tune', type=str, default='freeze')
         parser.add_argument('--peft_dir', type=str, default='')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

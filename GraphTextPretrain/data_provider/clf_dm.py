@@ -104,7 +104,7 @@ class ClfCollater:
         return graphs, smiles_prompt_tokens
 
 
-class ClfDM(LightningDataModule):
+class FGClfDM(LightningDataModule):
     def __init__(
         self,
         mode: str = 'pretrain',
@@ -123,9 +123,9 @@ class ClfDM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.train_dataset = MoleculeFGPred(root+f'/train/', text_max_len, self.prompt)
-        self.val_dataset = MoleculeFGPred(root + '/valid/', text_max_len, self.prompt)
-        self.test_dataset = MoleculeFGPred(root + '/test/', text_max_len, self.prompt)
+        self.train_dataset = MoleculeFGPred(root+f'/train/', text_max_len, self.prompt, args.task_type)
+        self.val_dataset = MoleculeFGPred(root + '/valid/', text_max_len, self.prompt, args.task_type)
+        self.test_dataset = MoleculeFGPred(root + '/test/', text_max_len, self.prompt, args.task_type)
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
         self.mol_token_id = None

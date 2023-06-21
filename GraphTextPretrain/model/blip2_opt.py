@@ -267,10 +267,6 @@ class Blip2OPT(Blip2Base):
         targets = torch.cat([empty_targets, targets], dim=1)
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        # print('-----------------')
-        # print(prompt_tokens.is_mol_token.shape)
-        # print(mol_tokens.flatten(0, 1).shape)
-        # print(prompt_embeds.shape)
         prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
         inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)

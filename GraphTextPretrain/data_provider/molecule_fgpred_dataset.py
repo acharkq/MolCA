@@ -55,8 +55,24 @@ def rdkit_functional_group_label_features_generator(smiles):
     return features
 
 
+def rdkit_functional_group_label_features_generator_regression(smiles):
+    """
+    Generates functional group label for a molecule using RDKit.
+
+    :param mol: A molecule (i.e. either a SMILES string or an RDKit molecule).
+    :return: A 1D numpy array containing the RDKit 2D features.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    smiles2 = Chem.MolToSmiles(mol, isomericSmiles=True)
+    # assert smiles == smiles2, print(smiles, smiles2)
+    generator = rdDescriptors.RDKit2D(RDKIT_PROPS)
+    features = generator.process(smiles2)[1:]
+    features = np.array(features)
+    return features
+
+
 class MoleculeFGPred(Dataset):
-    def __init__(self, root, text_max_len, prompt=None):
+    def __init__(self, root, text_max_len, prompt=None, task_type='classfication'):
         super(MoleculeFGPred, self).__init__(root)
         self.root = root
         self.text_max_len = text_max_len
@@ -73,6 +89,7 @@ class MoleculeFGPred(Dataset):
         else:
             self.prompt = prompt
         self.num_labels = len(RDKIT_PROPS)
+        self.task_type = task_type
 
     def get(self, index):
         return self.__getitem__(index)
@@ -103,7 +120,12 @@ class MoleculeFGPred(Dataset):
         else:
             smiles_prompt = self.prompt
         
-        fg_feat = rdkit_functional_group_label_features_generator(smiles)
+        if self.task_type == 'classification':
+            fg_feat = rdkit_functional_group_label_features_generator(smiles)
+        elif self.task_type == 'regression':
+            fg_feat = rdkit_functional_group_label_features_generator_regression(smiles)
+        else:
+            raise NotImplementedError()
         fg_feat = torch.from_numpy(fg_feat).float()
         return data_graph, smiles_prompt, fg_feat
     

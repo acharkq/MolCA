@@ -29,6 +29,24 @@ def eval_multi_label(y_true, y_scores):
     return mean_roc
 
 
+def rmse(y,f):
+    rmse = np.sqrt(((y - f)**2).mean(axis=0))
+    return rmse
+
+def mse(y,f):
+    mse = float(((y - f)**2).mean(axis=0))
+    return mse
+
+def eval_regression(y_true, y_scores):
+    y_true = y_true.numpy()
+    y_scores = y_scores.numpy()
+    rmse_loss_list = []
+    for i in range(y_true.shape[1]):
+        rmse_loss = rmse(y_true[:, i], y_scores[:, i])
+        rmse_loss_list.append(rmse_loss)
+    mean_rmse = sum(rmse_loss_list) / len(rmse_loss_list)
+    return mean_rmse
+
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
@@ -90,7 +108,7 @@ class MolCAClf(pl.LightningModule):
         self.min_len = args.min_len
         self.reaction_weight = args.reaction_weight
         self.llm_tune = args.llm_tune
-        
+        self.task_type = args.task_type
         self.blip2opt = MolCAOPTClf(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
@@ -136,10 +154,18 @@ class MolCAClf(pl.LightningModule):
         test_logits = torch.cat(test_logits, dim=0)
         test_labels = torch.cat(test_labels, dim=0)
 
-        val_roc = eval_multi_label(val_labels, val_logits)
-        test_roc = eval_multi_label(test_labels, test_logits)
-        self.log("val roc", float(val_roc))
-        self.log("test roc", float(test_roc))
+        if self.task_type == 'classification':
+            val_roc = eval_multi_label(val_labels, val_logits)
+            test_roc = eval_multi_label(test_labels, test_logits)
+            self.log("val roc", float(val_roc))
+            self.log("test roc", float(test_roc))
+        elif self.task_type == 'regression':
+            val_rmse_loss = eval_regression(val_labels, val_logits)
+            test_rmse_loss = eval_regression(test_labels, test_logits)
+            self.log("val rmse", float(val_rmse_loss))
+            self.log("test rmse", float(test_rmse_loss))
+        else:
+            raise NotImplementedError()
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:
@@ -180,7 +206,7 @@ class MolCAClf(pl.LightningModule):
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         ## lora config
         parser.add_argument('--lora_r', type=int, default=8)
         parser.add_argument('--lora_alpha', type=int, default=32)
@@ -199,6 +225,7 @@ class MolCAClf(pl.LightningModule):
         parser.add_argument('--stage2_path', type=str, default='')
         parser.add_argument('--init_checkpoint', type=str, default='')
         parser.add_argument('--caption_eval_epoch', type=int, default=10)
+        parser.add_argument('--task_type', type=str, default='classification')
         return parent_parser
 
 

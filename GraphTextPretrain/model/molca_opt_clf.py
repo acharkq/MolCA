@@ -102,8 +102,9 @@ class MolCAOPTClf(Blip2Base):
         if opt_model == 'facebook/galactica-125m':
             self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, num_labels=args.num_labels)
         else:
-            # self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, torch_dtype=torch.float16, num_labels=args.num_labels)
-            self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, num_labels=args.num_labels)
+            self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, torch_dtype=torch.float16, num_labels=args.num_labels)
+            # self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, num_labels=args.num_labels)
+            self.opt_model.score.weight.data = self.opt_model.score.weight.data.float()
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         self.llm_tune = llm_tune
@@ -131,8 +132,13 @@ class MolCAOPTClf(Blip2Base):
         )
         
         self.prompt = prompt
-        self.loss_func = nn.BCEWithLogitsLoss(reduction="none")
-
+        self.task_type = args.task_type
+        if args.task_type == 'classfication':
+            self.loss_func = nn.BCEWithLogitsLoss(reduction="none")
+        elif args.task_type == 'regression':
+            self.loss_func = nn.MSELoss()
+        else:
+            raise NotImplementedError()
     
     def forward(self, batch, mode='train'):
         # with self.maybe_autocast():
@@ -162,9 +168,14 @@ class MolCAOPTClf(Blip2Base):
         if mode == 'inference':
             return logits
         
-        ## add together the valid loss
-        loss_mat = self.loss_func(logits, ((graphs.y + 1) / 2))
-        is_valid = graphs.y.abs() > 0
-        loss_mat = torch.where(is_valid, loss_mat, torch.zeros_like(loss_mat))  # shape = [N, C]
-        loss = torch.sum(loss_mat)/torch.sum(is_valid)
+        if self.task_type == 'classification':
+            ## add together the valid loss
+            loss_mat = self.loss_func(logits, ((graphs.y + 1) / 2))
+            is_valid = graphs.y.abs() > 0
+            loss_mat = torch.where(is_valid, loss_mat, torch.zeros_like(loss_mat))  # shape = [N, C]
+            loss = torch.sum(loss_mat)/torch.sum(is_valid)
+        elif self.task_type == 'regression':
+            loss = self.loss_func(logits, graphs.y)
+        else:
+            raise NotImplementedError()
         return {"loss": loss}

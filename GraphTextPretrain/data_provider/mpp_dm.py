@@ -133,7 +133,7 @@ class MPPSmilesDataset(Dataset):
     
     def __getitem__(self, idx):
         assert self.prompt.find('{}') >= 0
-        smiles_prompt = self.prompt.format(self.smiles_list[idx])
+        smiles_prompt = self.prompt.format(self.smiles_list[idx][:256])
         return self.g_dataset[idx], smiles_prompt
     
     def len(self):

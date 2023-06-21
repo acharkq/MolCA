@@ -207,7 +207,7 @@ class Blip2Stage1(pl.LightningModule):
         # train mode
         parser.add_argument('--temperature', type=float, default=0.1, help='the temperature of NT_XentLoss')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=None)
+        parser.add_argument('--save_every_n_epochs', type=int, default=0)
         # evaluation
         parser.add_argument('--rerank_cand_num', type=int, default=128)
         

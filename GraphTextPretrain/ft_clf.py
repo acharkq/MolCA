@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
-from data_provider.clf_dm import ClfDM
+from data_provider.clf_dm import FGClfDM
 from data_provider.mpp_dm import MPPDM
 from model.molca_ft_clf import MolCAClf
 from model.smiles_opt_clf import SmilesClf
@@ -26,10 +26,11 @@ def main(args):
     if args.root.find('MoleculeNet') >= 0:
         dm = MPPDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, None, args)
     else:
-        dm = ClfDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, None, args)
+        dm = FGClfDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, None, args)
+        args.num_labels = dm.train_dataset.num_labels
 
     # dm.train_dataset.num_label
-    # args.num_labels = dm.train_dataset.num_labels
+    # 
 
     if args.smiles_only:
         print('running smiles model')
@@ -58,13 +59,20 @@ def main(args):
     dm.init_tokenizer(tokenizer)
 
     callbacks = []
-    if args.root.find('MoleculeNet') < 0:
+    if args.root.find('MoleculeNet') >= 0:
         ## fixme save only used parameters
         callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
                                             filename='{epoch:02d}', 
+                                            every_n_epochs=0, 
+                                            save_last=False, 
+                                            save_top_k=0))
+    else:
+        callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                            filename='{epoch:02d}', 
                                             every_n_epochs=args.save_every_n_epochs, 
-                                            save_last=True, 
+                                            save_last=False, 
                                             save_top_k=-1))
+        
     if not isinstance(args.devices, list):
         args.devices = eval(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
@@ -115,7 +123,8 @@ def get_args():
 
 
 def run_moleculenet(args):
-    dataset_list = ['clintox', 'toxcast', 'sider', 'tox21']
+    dataset_list = ['bace', 'bbbp', 'clintox', 'toxcast', 'sider', 'tox21']
+    # dataset_list = ['sider', 'tox21']
     num_task_dict = {'tox21': 12, 'hiv': 1, 'muv': 17, 'bace': 1,
                          'bbbp': 1, 'toxcast': 617, 'sider': 27, 'clintox': 2}
     print('running moleculenet')
