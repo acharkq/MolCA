@@ -95,7 +95,7 @@ class Blip2Llama(Blip2Base):
         self.llm_tokenizer.add_special_tokens({'bos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'})
         self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'})
-        self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.float16)
+        self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.bfloat16)
         # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model)
         self.llm_model.resize_token_embeddings(len(self.llm_tokenizer))
         

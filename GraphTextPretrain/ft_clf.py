@@ -108,7 +108,7 @@ def get_args():
     parser = MPPDM.add_model_specific_args(parser)
     parser.set_defaults(accelerator='gpu',
                         devices='0',
-                        precision=16,
+                        precision='bf16',
                         max_epochs=10,
                         accumulate_grad_batches=1,
                         log_every_n_steps=5,

@@ -102,7 +102,7 @@ class MolCAOPTClf(Blip2Base):
         if opt_model == 'facebook/galactica-125m':
             self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, num_labels=args.num_labels)
         else:
-            self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, torch_dtype=torch.float16, num_labels=args.num_labels)
+            self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, torch_dtype=torch.bfloat16, num_labels=args.num_labels)
             # self.opt_model = OPTForSequenceClassification.from_pretrained(opt_model, num_labels=args.num_labels)
             self.opt_model.score.weight.data = self.opt_model.score.weight.data.float()
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model

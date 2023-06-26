@@ -14,7 +14,7 @@ import numpy as np
 import torch.distributed as dist
 from peft import LoraConfig, TaskType, PeftModel, get_peft_model
 from transformers import BertTokenizer, AutoTokenizer, OPTForCausalLM, LlamaForCausalLM
-
+from opendelta import LoraModel
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -59,20 +59,25 @@ class SmilesCaptionLM(pl.LightningModule):
         if self.llm_name == 'facebook/galactica-125m':
             self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name)
         else:
-            self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name, torch_dtype=torch.float16)
+            self.llm_model = OPTForCausalLM.from_pretrained(self.llm_name, torch_dtype=torch.bfloat16)
         self.llm_model.resize_token_embeddings(len(self.tokenizer) + 1) # for the special placeholder token
 
         if self.llm_tune == 'lora':
-            if args.peft_dir:
-                self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
-            else:
-                if args.peft_config:
-                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+            if False:
+                if args.peft_dir:
+                    self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
                 else:
-                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                self.peft_config = peft_config
-                self.llm_model = get_peft_model(self.llm_model, peft_config)
-                self.llm_model.print_trainable_parameters()
+                    if args.peft_config:
+                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+                    else:
+                        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                    self.peft_config = peft_config
+                    self.llm_model = get_peft_model(self.llm_model, peft_config)
+                    self.llm_model.print_trainable_parameters()
+            else:
+                self.delta_model = LoraModel(self.llm_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, modified_modules=["q_proj", "v_proj", "out_proj", "fc1", "fc2"])
+                self.delta_model.freeze_module()
+                self.delta_model.log()
         elif args.llm_tune == 'full':
             pass
         else:
@@ -91,8 +96,11 @@ class SmilesCaptionLM(pl.LightningModule):
         self.save_hyperparameters(args)
     
     def configure_optimizers(self):
-        self.trainer.reset_train_dataloader()
-        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
+        if False:
+            self.trainer.reset_train_dataloader()
+            warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
+        else:
+            warmup_steps = 100
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
         if self.args.scheduler == 'linear_warmup_cosine_lr':
             self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)

@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is
 torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
-def main(args):
+def main_v2(args):
     pl.seed_everything(args.seed)
     # model
     if args.llm_name.find('t5') >= 0:
@@ -70,6 +70,62 @@ def main(args):
         raise NotImplementedError()
 
 
+def main(args):
+    pl.seed_everything(args.seed)
+    # model
+    if args.llm_name.find('t5') >= 0:
+        lm = SmilesT5CaptionLM
+    else:
+        lm = SmilesCaptionLM
+    if args.init_checkpoint:
+        model = lm.load_from_checkpoint(args.init_checkpoint, strict=False, args=args)
+        print(f"loaded init checkpoint from {args.init_checkpoint}")
+    else:
+        model = lm(args)
+
+    print('total params:', sum(p.numel() for p in model.parameters()))
+    tokenizer = model.tokenizer
+    # data
+    if args.iupac_prediction:
+        dm = SmilesIupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    else:
+        dm = SmilesCaptionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    
+    callbacks = []
+    ## fixme save only used parameters
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                         filename='{epoch:02d}', 
+                                         every_n_epochs=args.save_every_n_epochs, 
+                                         save_last=True, 
+                                         save_top_k=-1))
+    if len(args.devices.split(',')) > 1:
+        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=False)
+    else:
+        strategy = None
+        args.devices = eval(args.devices)
+    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
+    trainer = Trainer.from_argparse_args(args,
+                                         callbacks=callbacks,
+                                         strategy=strategy,
+                                         logger=logger,
+                                        #  limit_train_batches=20,
+                                        #  limit_test_batches=100,
+                                         )
+    
+    train_loader = dm.train_dataloader()
+    device = f'cuda:{args.devices[0]}'
+    model.to(device)
+    model.train()
+    optimizer = model.configure_optimizers()
+    for batch in train_loader:
+        batch = (t.to(device) for t in batch)
+        # batch = batch.to(device)
+        loss = model.training_step(batch, 0)['loss']
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--filename', type=str, default="stage2_test")
@@ -83,7 +139,7 @@ def get_args():
     parser = SmilesCaptionDM.add_model_specific_args(parser)
     parser.set_defaults(accelerator='gpu',
                         devices='0,1,2,3',
-                        precision=16,
+                        precision='bf16',
                         max_epochs=10,
                         accumulate_grad_batches=1,
                         check_val_every_n_epoch=1)

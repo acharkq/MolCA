@@ -130,6 +130,22 @@ def read_mpp_results(args):
 
     print_std(results, stds, used_ds, True)
 
+def read_regression_results(args):
+    path = Path(args.path)
+    test_rmse_list = []
+    for file in path.glob('version_*'):
+        file = file / 'metrics.csv'
+        df = pd.read_csv(file)
+        df = df[['val rmse', 'test rmse']]
+        df = df[~df['val rmse'].isnull()]
+        array = df.to_numpy()
+        test_rmse = array[array[:, 0].argmin(), 1]
+        test_rmse_list.append(test_rmse)
+    test_rmse_list = np.asarray(test_rmse_list)
+    mean = round(test_rmse_list.mean(), 3)
+    std = round(test_rmse_list.std(), 3)
+    print(f'{mean}±{std}')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str)
@@ -145,7 +161,10 @@ if __name__ == '__main__':
     elif str(args.path).find('mpp') >= 0:
         read_mpp_results(args)
         exit()
-    
+    elif str(args.path).find('regression') >= 0:
+        read_regression_results(args)
+        exit()
+
     log_hparas = args.path / 'hparams.yaml'
     with open(log_hparas, 'r') as f:
         line = f.readline()

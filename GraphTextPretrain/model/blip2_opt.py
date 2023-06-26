@@ -11,7 +11,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
-from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
+# from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
 from ogb.utils import smiles2graph
 from torch_geometric.loader.dataloader import Collater
 from torch_geometric.data import Data
@@ -26,7 +26,9 @@ from model.blip2 import Blip2Base
 from transformers import AutoTokenizer
 # from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
 from transformers import OPTForCausalLM
-
+from opendelta import LoraModel
+# from opendelta.delta_models.lora import LoraConfig
+# from opendelta.delta_configs
 
 opt_model_list = [
     "facebook/galactica-125m",
@@ -166,21 +168,28 @@ class Blip2OPT(Blip2Base):
         if opt_model == 'facebook/galactica-125m':
             self.opt_model = OPTForCausalLM.from_pretrained(opt_model)
         else:
-            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
+            # self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         self.llm_tune = llm_tune
         if llm_tune == 'lora':
-            if peft_dir:
-                self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
-            else:
-                if self.args.peft_config:
-                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+            if False:
+                if peft_dir:
+                    self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
                 else:
-                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                self.peft_config = peft_config
-                self.opt_model = get_peft_model(self.opt_model, peft_config)
-                self.opt_model.print_trainable_parameters()
+                    if self.args.peft_config:
+                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+                    else:
+                        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                    self.peft_config = peft_config
+                    self.opt_model = get_peft_model(self.opt_model, peft_config)
+                    self.opt_model.print_trainable_parameters()
+            else:
+                # self.delta_model = LoraModel(self.opt_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, modified_modules=["q_proj", "v_proj", "out_proj", "fc1", "fc2"])
+                self.delta_model = LoraModel(self.opt_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                self.delta_model.freeze_module()
+                self.delta_model.log()
         elif llm_tune == 'freeze':
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False

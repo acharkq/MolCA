@@ -1,6 +1,5 @@
 import os
-from typing import Any, Dict, List, Mapping, Union
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from typing import Any, Dict
 import torch
 from model.blip2_opt import Blip2OPT
 from model.blip2_llama import Blip2Llama

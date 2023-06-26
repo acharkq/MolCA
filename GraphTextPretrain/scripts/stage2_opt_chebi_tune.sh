@@ -10,8 +10,12 @@ llm='facebook/galactica-1.3b';
 devices='6,7';
 
 # pretrain on stage1 checkpoint
-python stage2.py --devices $devices --filename "ft_${filename}_chebi_lora_smiles_prompt" --stage2_path "all_checkpoints/stage2_default/last.ckpt" --opt_model $llm --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8 --root "data/ChEBI-20_data" --peft_config "PeftConfig/CheBI.json" ;
+# python stage2.py --devices $devices --filename "ft_${filename}_chebi_lora_smiles_prompt" --stage2_path "all_checkpoints/stage2_default/last.ckpt" --opt_model $llm --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8 --root "data/ChEBI-20_data" --peft_config "PeftConfig/CheBI.json" ;
 # MolT5 uses max_len=512
+
+
+python stage2.py --devices $devices --filename "ft_${filename}_chebi_sslora_smiles_prompt" --stage2_path "all_checkpoints/pt_gal1.3b_correct_tunegnn/last.ckpt" --opt_model $llm --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8 --root "data/ChEBI-20_data" ;
+
 
 # python stage2.py --devices $devices --filename "ft_${filename}_chebi_lorasmall_smiles_prompt" --stage1_path "all_checkpoints/stage2_default/epoch=49-step=120950.ckpt" --opt_model $llm --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8 --root "data/ChEBI-20_data" --peft_config "PeftConfig/CheBISmall.json" ;
 

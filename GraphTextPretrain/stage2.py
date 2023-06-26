@@ -83,8 +83,7 @@ def main(args):
                                          callbacks=callbacks,
                                          strategy=strategy,
                                          logger=logger,
-                                        #  limit_train_batches=20,
-                                        #  limit_test_batches=100,
+                                        #  limit_train_batches=100,
                                          )
     
     if args.mode in {'pretrain', 'ft'}:
@@ -105,15 +104,15 @@ def get_args():
     parser.add_argument('--strategy_name', type=str, default=None)
     parser.add_argument('--iupac_prediction', action='store_true', default=False)
     parser.add_argument('--ckpt_path', type=str, default=None)
-    parser = Trainer.add_argparse_args(parser)
+    # parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = Stage2DM.add_model_specific_args(parser)
-    parser.set_defaults(accelerator='gpu',
-                        devices='0,1,2,3',
-                        precision=16,
-                        max_epochs=10,
-                        accumulate_grad_batches=1,
-                        check_val_every_n_epoch=1)
+    parser.add_argument('--accelerator', type=str, default='gpu')
+    parser.add_argument('--devices', type=str, default='0,1,2,3')
+    parser.add_argument('--precision', type=str, default='bf16')
+    parser.add_argument('--max_epochs', type=int, default=10)
+    parser.add_argument('--accumulate_grad_batches', type=int, default=1)
+    parser.add_argument('--check_val_every_n_epoch', type=int, default=1)
     args = parser.parse_args()
 
     print("=========================================")
