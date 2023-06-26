@@ -5,28 +5,18 @@
  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 import logging
-import os
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
-from torch.nn import functional as F
 from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
-from ogb.utils import smiles2graph
 from torch_geometric.loader.dataloader import Collater
-from torch_geometric.data import Data
 import numpy as np
-# from lavis.common.registry import registry
-# from lavis.models.base_model import all_gather_with_grad, concat_all_gather
 from lavis.models.blip2_models.blip2 import (
-    # Blip2Base,
     disabled_train,
 )
 from model.blip2 import Blip2Base
 from transformers import AutoTokenizer
-# from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
 from model.modeling_opt import OPTForSequenceClassification
-# from transformers import OPTForSequenceClassification
 
 
 opt_model_list = [
@@ -60,7 +50,6 @@ class MolCAOPTClf(Blip2Base):
         tune_gnn=False,
         num_query_token=32,
         cross_attention_freq=2,
-        use_bn=False,
         llm_tune='freeze',
         peft_dir='',
         opt_model="facebook/galactica-1.3b",
@@ -70,7 +59,7 @@ class MolCAOPTClf(Blip2Base):
         super().__init__()
         self.args = args
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
         self.tune_gnn = tune_gnn
         if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
@@ -80,8 +69,7 @@ class MolCAOPTClf(Blip2Base):
             logging.info("freeze graph encoder")
         
         self.num_query_token = num_query_token
-        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq
-        )
+        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
         ### remove the unused parameters
         self.Qformer.cls = None
         self.Qformer.bert.embeddings.word_embeddings = None

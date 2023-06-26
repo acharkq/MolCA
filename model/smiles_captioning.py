@@ -1,25 +1,17 @@
 import os
-from typing import Any, Dict, List, Mapping, Union
+from typing import Any, Dict
 import torch
 import pytorch_lightning as pl
-import torch.nn as nn
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
 import json
-from nltk.translate.bleu_score import corpus_bleu
-from nltk.translate.meteor_score import meteor_score
-from rouge_score import rouge_scorer
-from tqdm import tqdm
-import numpy as np
 import torch.distributed as dist
 from peft import LoraConfig, TaskType, PeftModel, get_peft_model
 from transformers import BertTokenizer, AutoTokenizer, OPTForCausalLM, LlamaForCausalLM
-from opendelta import LoraModel
+from model.help_funcs import caption_evaluate, AttrDict
+# from opendelta import LoraModel
 
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+
     
 
 class SmilesCaptionLM(pl.LightningModule):
@@ -63,21 +55,20 @@ class SmilesCaptionLM(pl.LightningModule):
         self.llm_model.resize_token_embeddings(len(self.tokenizer) + 1) # for the special placeholder token
 
         if self.llm_tune == 'lora':
-            if False:
-                if args.peft_dir:
-                    self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
-                else:
-                    if args.peft_config:
-                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-                    else:
-                        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                    self.peft_config = peft_config
-                    self.llm_model = get_peft_model(self.llm_model, peft_config)
-                    self.llm_model.print_trainable_parameters()
+            if args.peft_dir:
+                self.llm_model = PeftModel.from_pretrained(self.llm_model, args.peft_dir, is_trainable=True)
             else:
-                self.delta_model = LoraModel(self.llm_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, modified_modules=["q_proj", "v_proj", "out_proj", "fc1", "fc2"])
-                self.delta_model.freeze_module()
-                self.delta_model.log()
+                if args.peft_config:
+                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+                else:
+                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                self.peft_config = peft_config
+                self.llm_model = get_peft_model(self.llm_model, peft_config)
+                self.llm_model.print_trainable_parameters()
+            # else:
+            #     self.delta_model = LoraModel(self.llm_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, modified_modules=["q_proj", "v_proj", "out_proj", "fc1", "fc2"])
+            #     self.delta_model.freeze_module()
+            #     self.delta_model.log()
         elif args.llm_tune == 'full':
             pass
         else:
@@ -297,57 +288,3 @@ class SmilesCaptionLM(pl.LightningModule):
         parser.add_argument('--caption_eval_epoch', type=int, default=10)
         return parent_parser
 
-
-def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
-    meteor_scores = []
-    references = []
-    hypotheses = []
-    for gt, out in tqdm(zip(targets, predictions)):
-        gt_tokens = tokenizer.tokenize(gt, truncation=True, max_length=text_trunc_length,
-                                            padding='max_length')
-        gt_tokens = list(filter(('[PAD]').__ne__, gt_tokens))
-        gt_tokens = list(filter(('[CLS]').__ne__, gt_tokens))
-        gt_tokens = list(filter(('[SEP]').__ne__, gt_tokens))
-
-        out_tokens = tokenizer.tokenize(out, truncation=True, max_length=text_trunc_length,
-                                            padding='max_length')
-        out_tokens = list(filter(('[PAD]').__ne__, out_tokens))
-        out_tokens = list(filter(('[CLS]').__ne__, out_tokens))
-        out_tokens = list(filter(('[SEP]').__ne__, out_tokens))
-
-        references.append([gt_tokens])
-        hypotheses.append(out_tokens)
-
-        mscore = meteor_score([gt_tokens], out_tokens)
-        meteor_scores.append(mscore)
-
-    bleu2 = corpus_bleu(references, hypotheses, weights=(.5,.5))
-    bleu4 = corpus_bleu(references, hypotheses, weights=(.25,.25,.25,.25))
-    bleu2 *= 100
-    bleu4 *= 100
-
-    print('BLEU-2 score:', bleu2)
-    print('BLEU-4 score:', bleu4)
-    _meteor_score = np.mean(meteor_scores)
-    _meteor_score *= 100
-    print('Average Meteor score:', _meteor_score)
-
-    scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'])
-
-    rouge_scores = []
-
-    references = []
-    hypotheses = []
-
-    for gt, out in tqdm(zip(targets, predictions)):
-        rs = scorer.score(out, gt)
-        rouge_scores.append(rs)
-
-    print('ROUGE score:')
-    rouge_1 = np.mean([rs['rouge1'].fmeasure for rs in rouge_scores]) * 100
-    rouge_2 = np.mean([rs['rouge2'].fmeasure for rs in rouge_scores]) * 100
-    rouge_l = np.mean([rs['rougeL'].fmeasure for rs in rouge_scores]) * 100
-    print('rouge1:', rouge_1)
-    print('rouge2:', rouge_2)
-    print('rougeL:', rouge_l)
-    return bleu2, bleu4, rouge_1, rouge_2, rouge_l, _meteor_score

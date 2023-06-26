@@ -5,28 +5,23 @@
  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 import logging
-import os
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
-# from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
+from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
 from ogb.utils import smiles2graph
 from torch_geometric.loader.dataloader import Collater
 from torch_geometric.data import Data
 import numpy as np
-# from lavis.common.registry import registry
-# from lavis.models.base_model import all_gather_with_grad, concat_all_gather
 from lavis.models.blip2_models.blip2 import (
     # Blip2Base,
     disabled_train,
 )
 from model.blip2 import Blip2Base
 from transformers import AutoTokenizer
-# from lavis.models.blip2_models.modeling_opt import OPTForCausalLM
 from transformers import OPTForCausalLM
-from opendelta import LoraModel
+# from opendelta import LoraModel
 # from opendelta.delta_models.lora import LoraConfig
 # from opendelta.delta_configs
 
@@ -126,7 +121,6 @@ class Blip2OPT(Blip2Base):
         tune_gnn=False,
         num_query_token=32,
         cross_attention_freq=2,
-        use_bn=False,
         llm_tune='freeze',
         peft_dir='',
         opt_model="facebook/galactica-1.3b",
@@ -136,7 +130,7 @@ class Blip2OPT(Blip2Base):
         super().__init__()
         self.args = args
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
         self.tune_gnn = tune_gnn
         if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
@@ -146,8 +140,7 @@ class Blip2OPT(Blip2Base):
             logging.info("freeze graph encoder")
         
         self.num_query_token = num_query_token
-        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq
-        )
+        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
         ### remove the unused parameters
         self.Qformer.cls = None
         self.Qformer.bert.embeddings.word_embeddings = None
@@ -174,22 +167,16 @@ class Blip2OPT(Blip2Base):
 
         self.llm_tune = llm_tune
         if llm_tune == 'lora':
-            if False:
-                if peft_dir:
-                    self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
-                else:
-                    if self.args.peft_config:
-                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-                    else:
-                        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                    self.peft_config = peft_config
-                    self.opt_model = get_peft_model(self.opt_model, peft_config)
-                    self.opt_model.print_trainable_parameters()
+            if peft_dir:
+                self.opt_model = PeftModel.from_pretrained(self.opt_model, peft_dir, is_trainable=True)
             else:
-                # self.delta_model = LoraModel(self.opt_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, modified_modules=["q_proj", "v_proj", "out_proj", "fc1", "fc2"])
-                self.delta_model = LoraModel(self.opt_model, lora_r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
-                self.delta_model.freeze_module()
-                self.delta_model.log()
+                if self.args.peft_config:
+                    peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+                else:
+                    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
+                self.peft_config = peft_config
+                self.opt_model = get_peft_model(self.opt_model, peft_config)
+                self.opt_model.print_trainable_parameters()
         elif llm_tune == 'freeze':
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False

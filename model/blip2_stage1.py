@@ -4,12 +4,8 @@ import pytorch_lightning as pl
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
 from tqdm import tqdm
+from model.help_funcs import AttrDict
 
-
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
 
 
 class Blip2Stage1(pl.LightningModule):
@@ -22,7 +18,7 @@ class Blip2Stage1(pl.LightningModule):
         if not hasattr(args, 'rerank_cand_num'):
             args.rerank_cand_num = 128
         self.rerank_cand_num = args.rerank_cand_num
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args.use_bn)
+        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
     
         self.save_hyperparameters(args)
         

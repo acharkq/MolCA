@@ -1,11 +1,7 @@
 import torch
 from torch_geometric.data import Dataset
 
-from utils.GraphAug import drop_nodes, permute_edges, subgraph, mask_nodes
-from copy import deepcopy
-import numpy as np
 import os
-import random
 from transformers import BertTokenizer
 
 class RetrievalDataset(Dataset):
@@ -38,7 +34,6 @@ class RetrievalDataset(Dataset):
 
         graph_path = os.path.join(self.root, 'graph', graph_name)
         data_graph = torch.load(graph_path)
-        data_aug = self.augment(data_graph, self.graph_aug)
 
         text = ''
         if self.use_smiles:
@@ -64,58 +59,7 @@ class RetrievalDataset(Dataset):
         text += '\n'
         # para-level
         text, mask = self.tokenizer_text(text)
-        return data_aug, text.squeeze(0), mask.squeeze(0)  # , index
-
-    def augment(self, data, graph_aug):
-
-        if graph_aug == 'noaug':
-            data_aug = deepcopy(data)
-        elif graph_aug == 'dnodes':
-            data_aug = drop_nodes(deepcopy(data))
-        elif graph_aug == 'pedges':
-            data_aug = permute_edges(deepcopy(data))
-        elif graph_aug == 'subgraph':
-            data_aug = subgraph(deepcopy(data))
-        elif graph_aug == 'mask_nodes':
-            data_aug = mask_nodes(deepcopy(data))
-        elif graph_aug == 'random2':  # choose one from two augmentations
-            n = np.random.randint(2)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random3':  # choose one from three augmentations
-            n = np.random.randint(3)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random4':  # choose one from four augmentations
-            n = np.random.randint(4)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            elif n == 3:
-                data_aug = mask_nodes(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        else:
-            data_aug = deepcopy(data)
-            data_aug.x = torch.ones((data.edge_index.max()+1, 1))
-
-        return data_aug
+        return data_graph, text.squeeze(0), mask.squeeze(0)  # , index
 
     def tokenizer_text(self, text):
         sentence_token = self.tokenizer(text=text,
@@ -160,7 +104,6 @@ class RetrievalDatasetKVPLM(Dataset):
 
         graph_path = os.path.join(self.root, 'graph', graph_name)
         data_graph = torch.load(graph_path)
-        data_aug = self.augment(data_graph, self.graph_aug)
 
         text = ''
         text_path = os.path.join(self.root, 'text', text_name)
@@ -173,58 +116,7 @@ class RetrievalDatasetKVPLM(Dataset):
         text += '\n'
         # para-level
         text, mask = self.tokenizer_text(text)
-        return data_aug, text.squeeze(0), mask.squeeze(0)  # , index
-
-    def augment(self, data, graph_aug):
-
-        if graph_aug == 'noaug':
-            data_aug = deepcopy(data)
-        elif graph_aug == 'dnodes':
-            data_aug = drop_nodes(deepcopy(data))
-        elif graph_aug == 'pedges':
-            data_aug = permute_edges(deepcopy(data))
-        elif graph_aug == 'subgraph':
-            data_aug = subgraph(deepcopy(data))
-        elif graph_aug == 'mask_nodes':
-            data_aug = mask_nodes(deepcopy(data))
-        elif graph_aug == 'random2':  # choose one from two augmentations
-            n = np.random.randint(2)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random3':  # choose one from three augmentations
-            n = np.random.randint(3)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random4':  # choose one from four augmentations
-            n = np.random.randint(4)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            elif n == 3:
-                data_aug = mask_nodes(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        else:
-            data_aug = deepcopy(data)
-            data_aug.x = torch.ones((data.edge_index.max()+1, 1))
-
-        return data_aug
+        return data_graph, text.squeeze(0), mask.squeeze(0)  # , index
 
     def tokenizer_text(self, text):
         sentence_token = self.tokenizer(text=text,

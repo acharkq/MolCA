@@ -178,7 +178,7 @@ def evaluation(y_true, y_scores):
 def main(args):
     pl.seed_everything(args.seed)
     # model
-    model= Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.llm_tune, args.peft_dir, args.opt_model, args.prompt)
+    model= Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt)
     if args.init_checkpoint:
         state_dict = torch.load(args.init_checkpoint, map_location='cpu')['state_dict']
         state_dict = {k[9:]: v for k, v in state_dict.items()}
@@ -277,7 +277,6 @@ def get_args():
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
     parser.add_argument('--prompt', type=str, default='')
-    parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='blip')
     parser.add_argument('--device', type=str, default='0')
     parser.add_argument('--mpp_dataset', type=str, default='bbbp')

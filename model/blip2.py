@@ -16,7 +16,6 @@ from lavis.common.utils import is_url
 from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 from transformers import BertTokenizer
-from model.mask_bn import MaskedBatchNorm1d
 from model.gin_model import GNN
 
 
@@ -62,7 +61,7 @@ class Blip2Base(BaseModel):
 
     @classmethod
     def init_graph_encoder(
-        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn):
+        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio):
         graph_encoder = GNN(
             num_layer=gin_num_layers,
             emb_dim=gin_hidden_dim,
@@ -76,10 +75,7 @@ class Blip2Base(BaseModel):
             print(missing_keys)
             print(unexpected_keys)
         
-        if use_bn:
-            ln_graph = MaskedBatchNorm1d(graph_encoder.num_features)
-        else:
-            ln_graph = LayerNorm(graph_encoder.num_features)
+        ln_graph = LayerNorm(graph_encoder.num_features)
             
         return graph_encoder, ln_graph
 

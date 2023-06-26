@@ -1,17 +1,14 @@
-import os
-from typing import Any, Dict, List, Mapping, Union
 import torch
 import pytorch_lightning as pl
 import torch.nn as nn
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
-import torch.distributed as dist
 from peft import LoraConfig, TaskType, PeftModel, get_peft_model
 from transformers import BertTokenizer, AutoTokenizer
 from model.modeling_opt import OPTForSequenceClassification
 import numpy as np
 from sklearn.metrics import roc_auc_score
-
+from model.help_funcs import AttrDict
 
 def rmse(y,f):
     rmse = np.sqrt(((y - f)**2).mean(axis=0))
@@ -48,29 +45,9 @@ def eval_multi_label(y_true, y_scores):
     mean_roc = sum(roc_list) / len(roc_list)
     return mean_roc
 
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
     
 
 class SmilesClf(pl.LightningModule):
-    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-    #     if self.llm_tune != 'full':
-    #         to_be_removed = []
-    #         for key in checkpoint['state_dict']:
-    #             if key.startswith('llm_model'):
-    #                 to_be_removed.append(key)
-    #         for key in to_be_removed:
-    #             checkpoint['state_dict'].pop(key)
-
-    #     if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
-    #         if self.local_rank == 0: # manually fix a bug in peft module
-    #             peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
-    #             self.llm_model.peft_config['default'] = peft_config
-    #             self.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-    #     return super().on_save_checkpoint(checkpoint)
-    
     def __init__(self, args):
         super().__init__()
         if isinstance(args, dict):

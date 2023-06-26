@@ -99,7 +99,6 @@ def get_args():
     parser.add_argument('--filename', type=str, default="stage2_test")
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
-    parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='pretrain')
     parser.add_argument('--strategy_name', type=str, default=None)
     parser.add_argument('--iupac_prediction', action='store_true', default=False)

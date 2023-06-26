@@ -78,7 +78,6 @@ if __name__ == '__main__':
     # MM settings
     parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=False)
     parser.add_argument('--lm', action='store_true', help='use language modeling or not', default=False)
-    parser.add_argument('--use_bn', action='store_true', default=False)
     parser.add_argument('--mode', type=str, default='train')
     parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args

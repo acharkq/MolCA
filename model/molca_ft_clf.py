@@ -1,15 +1,11 @@
-import os
-from typing import Any, Dict
 import torch
-# from model.blip2_opt import Blip2OPT
 from model.molca_opt_clf import MolCAOPTClf
 import pytorch_lightning as pl
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from peft import LoraConfig, TaskType
-
+from model.help_funcs import AttrDict
 
 def eval_multi_label(y_true, y_scores):
     y_true = y_true.numpy()
@@ -47,10 +43,6 @@ def eval_regression(y_true, y_scores):
     mean_rmse = sum(rmse_loss_list) / len(rmse_loss_list)
     return mean_rmse
 
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
 
 def load_ignore_unexpected(model, state_dict):
     keys = set(model.state_dict().keys())
@@ -70,29 +62,7 @@ def get_module_state_dict(state_dict, module_name):
             module_state_dict[key] = value
     return module_state_dict
 
-class MolCAClf(pl.LightningModule):
-    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-    #     if self.llm_tune != 'full':
-    #         to_be_removed = []
-    #         for key in checkpoint['state_dict']:
-    #             if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
-    #                 to_be_removed.append(key)
-    #         for key in to_be_removed:
-    #             checkpoint['state_dict'].pop(key)
-    #     if self.llm_tune == 'lora' and (self.current_epoch + 1) % 10 == 0:
-    #         if self.local_rank == 0: # manually fix a bug in peft module
-    #             if self.args.peft_config:
-    #                 peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-    #             else:
-    #                 peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
-    #             if hasattr(self.blip2opt, 'opt_model'):
-    #                 self.blip2opt.opt_model.peft_config['default'] = peft_config
-    #                 self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-    #             elif hasattr(self.blip2opt, 'llm_model'):
-    #                 self.blip2opt.llm_model.peft_config['default'] = peft_config
-    #                 self.blip2opt.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-    #     return super().on_save_checkpoint(checkpoint)
-    
+class MolCAClf(pl.LightningModule):    
     def __init__(self, args):
         super().__init__()
         if isinstance(args, dict):
@@ -109,7 +79,7 @@ class MolCAClf(pl.LightningModule):
         self.reaction_weight = args.reaction_weight
         self.llm_tune = args.llm_tune
         self.task_type = args.task_type
-        self.blip2opt = MolCAOPTClf(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.use_bn, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
+        self.blip2opt = MolCAOPTClf(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         self.tokenizer = self.blip2opt.init_tokenizer()
         self.save_hyperparameters(args)
 

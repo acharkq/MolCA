@@ -15,13 +15,10 @@ from torch.nn import functional as F
 # from lavis.common.registry import registry
 # from lavis.models.base_model import all_gather_with_grad, concat_all_gather
 from lavis.models.blip2_models.blip2 import (
-    # Blip2Base,
-    compute_sim_matrix,
     disabled_train,
 )
-from lavis.models.blip_models.blip_outputs import BlipOutput, BlipOutputFeatures
-import pytorch_lightning as pl
-from lavis.common.dist_utils import download_cached_file, is_dist_avail_and_initialized
+from lavis.models.blip_models.blip_outputs import BlipOutput
+from lavis.common.dist_utils import is_dist_avail_and_initialized
 from model.blip2 import Blip2Base
 from pytorch_lightning.utilities import distributed
 
@@ -85,7 +82,6 @@ class Blip2Qformer(Blip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         embed_dim=256,
-        use_bn=False,
     ):
         super().__init__()
         self.gtm = gtm
@@ -93,7 +89,7 @@ class Blip2Qformer(Blip2Base):
         
         self.tokenizer = self.init_tokenizer()
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio, use_bn)
+        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
         self.tune_gnn = tune_gnn
         if not tune_gnn:
             for name, param in self.graph_encoder.named_parameters():
@@ -102,8 +98,7 @@ class Blip2Qformer(Blip2Base):
             self.graph_encoder.train = disabled_train
             logging.info("freeze graph encoder")
         
-        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq
-        )
+        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
         self.Qformer.resize_token_embeddings(len(self.tokenizer))
         state_dict = self.Qformer.state_dict()
         for name, param in self.Qformer.named_parameters():

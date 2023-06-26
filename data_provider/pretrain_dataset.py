@@ -1,9 +1,5 @@
 import torch
-from torch_geometric.data import Data, Dataset
-import torch_geometric
-from utils.GraphAug import drop_nodes, permute_edges, subgraph, mask_nodes
-from copy import deepcopy
-import numpy as np
+from torch_geometric.data import Dataset
 import os
 import random
 
@@ -55,54 +51,6 @@ class GINPretrainDataset(Dataset):
             text, mask = self.tokenizer_text(text)
         return data_graph, text.squeeze(0), mask.squeeze(0)
 
-
-    def augment(self, data, graph_aug):
-        if graph_aug == 'dnodes':
-            data_aug = drop_nodes(deepcopy(data))
-        elif graph_aug == 'pedges':
-            data_aug = permute_edges(deepcopy(data))
-        elif graph_aug == 'subgraph':
-            data_aug = subgraph(deepcopy(data))
-        elif graph_aug == 'mask_nodes':
-            data_aug = mask_nodes(deepcopy(data))
-        elif graph_aug == 'random2':  # choose one from two augmentations
-            n = np.random.randint(2)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random3':  # choose one from three augmentations
-            n = np.random.randint(3)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        elif graph_aug == 'random4':  # choose one from four augmentations
-            n = np.random.randint(4)
-            if n == 0:
-                data_aug = drop_nodes(deepcopy(data))
-            elif n == 1:
-                data_aug = permute_edges(deepcopy(data))
-            elif n == 2:
-                data_aug = subgraph(deepcopy(data))
-            elif n == 3:
-                data_aug = mask_nodes(deepcopy(data))
-            else:
-                print('sample error')
-                assert False
-        else:
-            data_aug = deepcopy(data)
-            data_aug.x = torch.ones((data.edge_index.max()+1, 1))
-
-        return data_aug
 
     def tokenizer_text(self, text):
         sentence_token = self.tokenizer(text=text,
