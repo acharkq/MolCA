@@ -176,7 +176,7 @@ class Blip2OPT(Blip2Base):
                     peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout)
                 self.peft_config = peft_config
                 self.opt_model = get_peft_model(self.opt_model, peft_config)
-                self.opt_model.print_trainable_parameters()
+            self.opt_model.print_trainable_parameters()
         elif llm_tune == 'freeze':
             for name, param in self.opt_model.named_parameters():
                 param.requires_grad = False
