@@ -38,6 +38,8 @@ python stage1.py --root 'data/kv_data' --gtm --lm --devices '0,1'  --filename pc
 
 ### Molecule Captioning
 
+Run the following script for evaluation on the CheBI-20 dataset.
+
 ```python
 python stage2.py --devices '[0]' --filename "chebi_evaluation" --stage2_path "all_checkpoints/share/chebi.ckpt" --opt_model 'facebook/galactica-1.3b' --mode eval --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8 --root "data/ChEBI-20_data" --peft_dir "all_checkpoints/share/chebi_lora";
 ```
