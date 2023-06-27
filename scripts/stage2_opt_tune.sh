@@ -13,9 +13,7 @@ devices='[7]';
 
 
 
-python stage2.py --devices $devices --filename "test" --opt_model $llm --mode ft --tune_gnn --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --llm_tune lora --inference_batch_size 8 --max_epochs 100 --batch_size 16  --lora_r 8
-
-# --peft_config "PeftConfig/CheBIMiddle.json"; 
+python stage2.py --devices $devices --filename "test" --opt_model $llm --mode ft --tune_gnn --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --llm_tune lora --inference_batch_size 8 --max_epochs 100 --batch_size 16  --lora_r 8 --peft_config "PeftConfig/CheBIMiddle.json"
 
 
 
