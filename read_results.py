@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import numpy as np
 from model.blip2_stage2 import caption_evaluate
-from transformers import AutoTokenizer, BertTokenizer
+from transformers import BertTokenizer
 
 pd.options.display.max_rows = 1000
 pd.options.display.max_columns = 1000

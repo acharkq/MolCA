@@ -1,8 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 from pytorch_lightning import LightningDataModule
-import torch
-from torch.nn import functional as F
 import torch_geometric
 from data_provider.pretrain_dataset import GINPretrainDataset
 from data_provider.retrieval_dataset import RetrievalDataset
@@ -44,8 +42,6 @@ class Stage1DM(LightningDataModule):
                                                                    pin_memory=False, 
                                                                    drop_last=False, 
                                                                    persistent_workers=True)
-    # def setup(self, stage: str = None):
-    #     self.train_dataset = self.dataset
     
     def train_dataloader(self):
         loader = torch_geometric.loader.DataLoader(

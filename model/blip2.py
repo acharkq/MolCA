@@ -23,7 +23,7 @@ from model.gin_model import GNN
 class Blip2Base(BaseModel):
     @classmethod
     def init_tokenizer(cls):
-        tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+        tokenizer = BertTokenizer.from_pretrained('./bert_pretrained/')
         tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         return tokenizer
 

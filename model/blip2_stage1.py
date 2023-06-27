@@ -15,8 +15,6 @@ class Blip2Stage1(pl.LightningModule):
             args = AttrDict(**args)
         
         self.args = args
-        if not hasattr(args, 'rerank_cand_num'):
-            args.rerank_cand_num = 128
         self.rerank_cand_num = args.rerank_cand_num
         self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
     
@@ -46,86 +44,8 @@ class Blip2Stage1(pl.LightningModule):
         self.log("val_loss_gtm", float(blip2_loss.loss_itm), batch_size=batch_size, sync_dist=True)
         self.log("val_loss_lm", float(blip2_loss.loss_lm), batch_size=batch_size, sync_dist=True)
         self.log("val_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
-        # self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
     
-    def validation_epoch_end_v1(self, outputs) -> None:
-        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
-            return
-        if self.trainer.global_rank == 0:
-            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total, _, _, _, _ = \
-                eval_retrieval_inbatch(self.blip2qformer, self.val_match_loader, self.device)
-            self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("val_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
-            
-            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, _ = \
-                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
-            self.log("val_fullset_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("val_fullset_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("val_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("val_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
-
-            ## for test set
-            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total, _, _, _, _ = \
-                eval_retrieval_inbatch(self.blip2qformer, self.test_match_loader, self.device)
-            self.log("test_inbatch_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("test_inbatch_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("test_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("test_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
-            
-            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, _ = \
-                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
-            self.log("test_fullset_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("test_fullset_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
-            del graph_rep_total, text_rep_total
-        # self.trainer.strategy.barrier()
-    
-    def validation_epoch_end_v2(self, outputs) -> None:
-        if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
-            return
-        if self.trainer.global_rank == 0:
-            ## for validation set
-            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total, _, _, _, _ = \
-                eval_retrieval_inbatch(self.blip2qformer, self.val_match_loader, self.device)
-            self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("val_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
-            
-            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, _ = \
-                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
-            self.log("val_fullset_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("val_fullset_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("val_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("val_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
-
-            ## for test set
-            g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, graph_rep_total, text_rep_total, graph_feat_total, graph_mask_total, text_total, text_mask_total = \
-                eval_retrieval_inbatch(self.blip2qformer, self.test_match_loader, self.device)
-            self.log("test_inbatch_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("test_inbatch_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("test_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("test_inbatch_t2g_rec20", t2g_rec20, sync_dist=False)
-            
-            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20, sim_g2t = \
-                eval_retrieval_fullset(graph_rep_total, text_rep_total, self.device)
-            self.log("test_fullset_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("test_fullset_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
-
-            g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
-                eval_retrieval_fullset_v2(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.device)
-            self.log("rerank_test_fullset_g2t_acc", g2t_acc, sync_dist=False)
-            self.log("rerank_test_fullset_t2g_acc", t2g_acc, sync_dist=False)
-            self.log("rerank_test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
-            self.log("rerank_test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
-            del graph_rep_total, text_rep_total
-
     def validation_epoch_end(self, outputs) -> None:
         if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
             return
@@ -134,7 +54,7 @@ class Blip2Stage1(pl.LightningModule):
             g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
             g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20,\
             graph_rep_total, text_rep_total, _, _, _, _ = \
-                eval_retrieval_inbatch_v2(self.blip2qformer, self.val_match_loader, self.device)
+                eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.val_match_loader, self.device)
             self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False)
             self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False)
             self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False)
@@ -156,7 +76,7 @@ class Blip2Stage1(pl.LightningModule):
             g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
             g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
             graph_rep_total, text_rep_total, graph_feat_total, graph_mask_total, text_total, text_mask_total = \
-                eval_retrieval_inbatch_v2(self.blip2qformer, self.test_match_loader, self.device)
+                eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.test_match_loader, self.device)
             self.log("rerank_test_inbatch_g2t_acc", g2t_rerank_acc, sync_dist=False)
             self.log("rerank_test_inbatch_t2g_acc", t2g_rerank_acc, sync_dist=False)
             self.log("rerank_test_inbatch_g2t_rec20", g2t_rerank_rec20, sync_dist=False)
@@ -175,7 +95,7 @@ class Blip2Stage1(pl.LightningModule):
             self.log("test_fullset_t2g_rec20", t2g_rec20, sync_dist=False)
 
             g2t_acc, g2t_rec20, t2g_acc, t2g_rec20 = \
-                eval_retrieval_fullset_v2(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.rerank_cand_num, self.device)
+                eval_retrieval_fullset_for_rerank(self.blip2qformer, sim_g2t, graph_feat_total, graph_mask_total, text_total, text_mask_total, self.rerank_cand_num, self.device)
             self.log("rerank_test_fullset_g2t_acc", g2t_acc, sync_dist=False)
             self.log("rerank_test_fullset_t2g_acc", t2g_acc, sync_dist=False)
             self.log("rerank_test_fullset_g2t_rec20", g2t_rec20, sync_dist=False)
@@ -359,9 +279,9 @@ def eval_retrieval_fullset(graph_rep, text_rep, device):
 
 
 @torch.no_grad()
-def eval_retrieval_fullset_v2(model, sim_g2t_total, graph_feat_total, graph_mask_total, text_total, text_mask_total, rerank_cand_num, device):
+def eval_retrieval_fullset_for_rerank(model, sim_g2t_total, graph_feat_total, graph_mask_total, text_total, text_mask_total, rerank_cand_num, device):
     N = sim_g2t_total.shape[0]
-    B = 16    
+    B = 4    
     rcn = rerank_cand_num ## re-rank candidate numbers
     
     hit_g2t = []
@@ -414,7 +334,7 @@ def eval_retrieval_fullset_v2(model, sim_g2t_total, graph_feat_total, graph_mask
 
 
 @torch.no_grad()
-def eval_retrieval_inbatch_v2(model, dataloader, device=None):
+def eval_retrieval_inbatch_with_rerank(model, dataloader, device=None):
     '''
     include rerank
     '''
@@ -477,7 +397,18 @@ def eval_retrieval_inbatch_v2(model, dataloader, device=None):
         graph_mask = graph_mask.repeat_interleave(B, 0) # shape = [B * B, num_qs, D]
         text = text.repeat(B, 1) # shape = [B * B, text_len]
         text_mask = text_mask.repeat(B, 1) # shape = [B * B, text_len]
-        gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(B, B)
+
+        if False:
+            gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(B, B)
+        else:
+            ## batched reranking
+            batch_size = 64
+            gtm_sim = []
+            for i in range(0, graph_feat.shape[0], batch_size):
+                gtm_sim_local = model.compute_gtm(graph_feat[i:i+batch_size], graph_mask[i:i+batch_size], text[i:i+batch_size], text_mask[i:i+batch_size])
+                gtm_sim.append(gtm_sim_local)
+            gtm_sim = torch.cat(gtm_sim, dim=0).reshape(B, B)
+
         rerank_sim = sim_g2t + gtm_sim
 
         ## g2t rerank
