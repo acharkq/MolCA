@@ -7,11 +7,11 @@ See `environment.yml`
 
 ## Dataset
 
-Unzip the `./dataset.zip` under the `./data/` directory. It contains the molecule caption dataset of CheBI-20 and the retrieval dataset of KV-PLM and MoMu.
+Unzip the `./dataset.zip` under the `./data/` directory. It contains the molecule caption dataset of CheBI-20 and the retrieval dataset of PCDes and MoMu.
 
 ## Checkpoints
 
-We share the checkpoints for reproducing results of molecule-text retrieval and for reproducing results of molecue captioning on the CheBI-20 dataset.
+We share the checkpoints for reproducing results of molecule-text retrieval and for reproducing results of molecule captioning on the CheBI-20 dataset.
 
 Please downlaod the checkpoint from this [link](https://ufile.io/6vffm5bg) and unzip it under the all_checkpoints directory
 
