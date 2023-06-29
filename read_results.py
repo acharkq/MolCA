@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 import json
 import numpy as np
-from model.blip2_stage2 import caption_evaluate
+from model.help_funcs import caption_evaluate
 from transformers import BertTokenizer
 
 pd.options.display.max_rows = 1000
@@ -72,7 +72,7 @@ def read_caption_prediction(args):
     with open(path, 'r') as f:
         lines = f.readlines()
         lines = [json.loads(line) for line in lines]
-    # tokenizer = AutoTokenizer.from_pretrained('./bert_pretrained')
+
     tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
     tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         
