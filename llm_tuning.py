@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is
 torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
-def main_v2(args):
+def main(args):
     pl.seed_everything(args.seed)
     # model
     if args.llm_name.find('t5') >= 0:
@@ -70,7 +70,7 @@ def main_v2(args):
         raise NotImplementedError()
 
 
-def main(args):
+def main_v2(args):
     pl.seed_everything(args.seed)
     # model
     if args.llm_name.find('t5') >= 0:

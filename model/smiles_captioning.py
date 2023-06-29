@@ -87,11 +87,8 @@ class SmilesCaptionLM(pl.LightningModule):
         self.save_hyperparameters(args)
     
     def configure_optimizers(self):
-        if False:
-            self.trainer.reset_train_dataloader()
-            warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
-        else:
-            warmup_steps = 100
+        self.trainer.reset_train_dataloader()
+        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
         if self.args.scheduler == 'linear_warmup_cosine_lr':
             self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
