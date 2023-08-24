@@ -75,7 +75,7 @@ class Blip2T5(Blip2Base):
         self.mol_token = '<mol>'
         self.opt_tokenizer.mol_token_id = self.opt_tokenizer("<mol>", add_special_tokens=False).input_ids[0]
         
-        self.opt_model = T5ForConditionalGeneration.from_pretrained('laituan245/molt5-large', torch_dtype=torch.bfloat16)
+        self.opt_model = T5ForConditionalGeneration.from_pretrained('laituan245/molt5-large', torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         self.llm_tune = llm_tune
@@ -110,7 +110,7 @@ class Blip2T5(Blip2Base):
     
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens = batch
-        if False:
+        if True:
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             if not self.tune_gnn:
                 graph_embeds = graph_embeds.detach()
@@ -134,14 +134,15 @@ class Blip2T5(Blip2Base):
             targets = text_tokens.input_ids.masked_fill(
                 text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
             )
-        outputs = self.opt_model(
-            inputs_embeds=prompt_embeds,
-            attention_mask=prompt_tokens.attention_mask,
-            decoder_attention_mask=text_tokens.attention_mask,
-            return_dict=True,
-            labels=targets,
-        )
-        loss = outputs.loss
+        with self.maybe_autocast(torch.float32):
+            outputs = self.opt_model(
+                inputs_embeds=prompt_embeds,
+                attention_mask=prompt_tokens.attention_mask,
+                decoder_attention_mask=text_tokens.attention_mask,
+                return_dict=True,
+                labels=targets,
+            )
+            loss = outputs.loss
         return {"loss": loss}
 
     
