@@ -45,7 +45,7 @@ def main(args):
 
     print('total params:', sum(p.numel() for p in model.parameters()))
 
-    if args.opt_model.find('galactica') >= 0:
+    if args.opt_model.find('galactica') >= 0 or args.opt_model.find('t5') >= 0:
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer
@@ -74,7 +74,7 @@ def main(args):
         elif args.strategy_name == 'deepspeed':
             strategy = strategies.DeepSpeedStrategy(stage=3)
         else:
-            strategy = MyDDPSpawnStrategy(find_unused_parameters=False)
+            strategy = MyDDPSpawnStrategy(find_unused_parameters=True)
     else:
         strategy = None
         args.devices = eval(args.devices)

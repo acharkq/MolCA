@@ -3,6 +3,7 @@ from typing import Any, Dict
 import torch
 from model.blip2_opt import Blip2OPT
 from model.blip2_llama import Blip2Llama
+from model.blip2_t5 import Blip2T5
 import pytorch_lightning as pl
 from torch import optim
 from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepLRScheduler
@@ -57,7 +58,7 @@ class Blip2Stage2(pl.LightningModule):
             if self.llm_tune == 'lora' and (self.current_epoch + 1) % self.args.save_every_n_epochs == 0:
                 if self.local_rank == 0: # manually fix a bug in peft module
                     if self.args.peft_config:
-                        peft_config = LoraConfig(**LorwaConfig.from_json_file(self.args.peft_config))
+                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
                     else:
                         peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
                     if hasattr(self.blip2opt, 'opt_model'):
@@ -87,6 +88,8 @@ class Blip2Stage2(pl.LightningModule):
             self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
             self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
+        elif args.opt_model.find('t5') >= 0:
+            self.blip2opt = Blip2T5(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         else:
             raise NotImplementedError()
         self.tokenizer = self.blip2opt.init_tokenizer()

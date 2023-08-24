@@ -23,7 +23,11 @@ from model.gin_model import GNN
 class Blip2Base(BaseModel):
     @classmethod
     def init_tokenizer(cls):
-        tokenizer = BertTokenizer.from_pretrained('./bert_pretrained/')
+        if True:
+            bert_name = 'allenai/scibert_scivocab_uncased'
+        else:
+            bert_name = 'bert_pretrained/'
+        tokenizer = BertTokenizer.from_pretrained(bert_name)
         tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         return tokenizer
 
@@ -41,8 +45,13 @@ class Blip2Base(BaseModel):
     def init_Qformer(cls, model_name, num_query_token, graph_width, cross_attention_freq=2):
         assert model_name == 'scibert'
         print("bert load scibert")
+        if True:
+            bert_name = 'allenai/scibert_scivocab_uncased'
+        else:
+            bert_name = 'bert_pretrained/'
+    
         
-        encoder_config = BertConfig.from_pretrained('bert_pretrained/')
+        encoder_config = BertConfig.from_pretrained(bert_name)
         encoder_config.encoder_width = graph_width
         # insert cross-attention layer every other block
         encoder_config.add_cross_attention = True
@@ -50,7 +59,7 @@ class Blip2Base(BaseModel):
         encoder_config.query_length = num_query_token
         
         Qformer = BertLMHeadModel.from_pretrained(
-            "bert_pretrained/", config=encoder_config
+            bert_name, config=encoder_config
         )
         query_tokens = nn.Parameter(
             torch.zeros(1, num_query_token, encoder_config.hidden_size)
