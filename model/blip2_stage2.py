@@ -57,7 +57,7 @@ class Blip2Stage2(pl.LightningModule):
             if self.llm_tune == 'lora' and (self.current_epoch + 1) % self.args.save_every_n_epochs == 0:
                 if self.local_rank == 0: # manually fix a bug in peft module
                     if self.args.peft_config:
-                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
+                        peft_config = LoraConfig(**LorwaConfig.from_json_file(self.args.peft_config))
                     else:
                         peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
                     if hasattr(self.blip2opt, 'opt_model'):
