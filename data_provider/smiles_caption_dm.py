@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 import re
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch_geometric.loader.dataloader import Collater
 # from data_provider.molecule_caption_dataset import MoleculeCaption
 from data_provider.smiles_caption_dataset import SmilesCaption
@@ -124,16 +124,22 @@ class SmilesCaptionDM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.pretrain_dataset = SmilesCaption(root+f'/pretrain/', text_max_len, self.prompt)
-        self.train_dataset = SmilesCaption(root+f'/train/', text_max_len, self.prompt)
-        self.val_dataset = SmilesCaption(root + '/valid/', text_max_len, self.prompt)
-        self.test_dataset = SmilesCaption(root + '/test/', text_max_len, self.prompt)
+        if root.lower().find('chebi') >= 0:
+            self.train_dataset = CheBIDataset(root+f'/train.txt', text_max_len, self.prompt)
+            self.val_dataset = CheBIDataset(root + '/validation.txt', text_max_len, self.prompt)
+            self.test_dataset = CheBIDataset(root + '/test.txt', text_max_len, self.prompt)
+        else:
+            self.pretrain_dataset = SmilesCaption(root+f'/pretrain/', text_max_len, self.prompt)
+            self.train_dataset = SmilesCaption(root+f'/train/', text_max_len, self.prompt)
+            self.val_dataset = SmilesCaption(root + '/valid/', text_max_len, self.prompt)
+            self.test_dataset = SmilesCaption(root + '/test/', text_max_len, self.prompt)
         self.init_tokenizer(tokenizer)
         self.use_gal = args.llm_name.find('gal') >= 0
     
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
-        self.pretrain_dataset.tokenizer = tokenizer
+        if hasattr(self, 'pretrain_dataset'):
+            self.pretrain_dataset.tokenizer = tokenizer
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
@@ -212,3 +218,38 @@ class SmilesCaptionDM(LightningDataModule):
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         return parent_parser
     
+
+class CheBIDataset(Dataset):
+    def __init__(self, path, text_max_len, prompt=None):
+        self.path = path
+        self.text_max_len = text_max_len
+        self.prompt = prompt
+
+        if not prompt:
+            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
+        else:
+            self.prompt = prompt
+
+        with open(self.path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            lines = [line.strip() for line in lines][1:]
+        
+        self.smiles_list = []
+        self.text_list = []
+        for line in lines:
+            _, smiles, text = line.split('\t')
+            self.smiles_list.append(smiles)
+            self.text_list.append(text)
+
+    def __len__(self):
+        return len(self.smiles_list)
+    
+    def __getitem__(self, index):
+        smiles = self.smiles_list[index]
+        text = self.text_list[index] + '\n'
+
+        if self.prompt.find('{}') >= 0:
+            smiles_prompt = self.prompt.format(smiles[:128])
+        else:
+            smiles_prompt = self.prompt
+        return smiles_prompt, text

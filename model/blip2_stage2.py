@@ -11,6 +11,7 @@ import json
 import torch.distributed as dist
 from peft import LoraConfig, TaskType
 from model.help_funcs import caption_evaluate, AttrDict
+from transformers import Adafactor
 
 
 def load_ignore_unexpected(model, state_dict):
@@ -116,17 +117,28 @@ class Blip2Stage2(pl.LightningModule):
     #     return self
     
     def configure_optimizers(self):
-        self.trainer.reset_train_dataloader()
-        warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
-        optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
-        if self.args.scheduler == 'linear_warmup_cosine_lr':
-            self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
-        elif self.args.scheduler == 'linear_warmup_step_lr':
-            self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, warmup_steps)
-        elif self.args.scheduler == 'None':
+        if self.args.optimizer == 'adafactor':
+            print('Using adafactor optimizer')
+            optimizer = Adafactor(
+                self.parameters(),
+                lr=1e-3,
+                relative_step=False,
+                scale_parameter=False,
+                warmup_init=False
+            )
             self.scheduler = None
         else:
-            raise NotImplementedError()
+            self.trainer.reset_train_dataloader()
+            warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
+            optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
+            if self.args.scheduler == 'linear_warmup_cosine_lr':
+                self.scheduler = LinearWarmupCosineLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, warmup_steps, self.args.warmup_lr)
+            elif self.args.scheduler == 'linear_warmup_step_lr':
+                self.scheduler = LinearWarmupStepLRScheduler(optimizer, self.args.max_epochs, self.args.min_lr, self.args.init_lr, self.args.lr_decay_rate, self.args.warmup_lr, warmup_steps)
+            elif self.args.scheduler == 'None':
+                self.scheduler = None
+            else:
+                raise NotImplementedError()
         return optimizer
 
     def test_epoch_end(self, outputs):
@@ -321,6 +333,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--warmup_steps', type=int, default=1000, help='optimizer warmup steps')
         parser.add_argument('--lr_decay_rate', type=float, default=0.9, help='optimizer lr decay rate')
         parser.add_argument('--scheduler', type=str, default='linear_warmup_cosine_lr', help='type of scheduler') # or linear_warmup_step_lr
+        parser.add_argument('--optimizer', type=str, default='adamw', help='type of scheduler')
         parser.add_argument('--stage1_path', type=str, default='')
         parser.add_argument('--stage2_path', type=str, default='')
         parser.add_argument('--init_checkpoint', type=str, default='')

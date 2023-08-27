@@ -67,7 +67,8 @@ def main(args):
                                          filename='{epoch:02d}', 
                                          every_n_epochs=args.save_every_n_epochs, 
                                          save_last=True, 
-                                         save_top_k=-1))
+                                         save_top_k=-1,
+                                         save_on_train_epoch_end=True))
     if len(args.devices.split(',')) > 1:
         if args.strategy_name == 'fsdp':
             strategy = strategies.DDPFullyShardedNativeStrategy()

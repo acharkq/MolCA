@@ -73,7 +73,7 @@ def read_caption_prediction(args):
         lines = f.readlines()
         lines = [json.loads(line) for line in lines]
 
-    tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+    tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
     tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         
 

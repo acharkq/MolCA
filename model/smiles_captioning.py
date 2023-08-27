@@ -82,7 +82,7 @@ class SmilesCaptionLM(pl.LightningModule):
         ## fixme: no prompt yet
         self.prompt = args.prompt
         
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+        self.bert_tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.bert_tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         self.save_hyperparameters(args)
     

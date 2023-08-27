@@ -75,7 +75,7 @@ class Blip2T5(Blip2Base):
         self.mol_token = '<mol>'
         self.opt_tokenizer.mol_token_id = self.opt_tokenizer("<mol>", add_special_tokens=False).input_ids[0]
         
-        self.opt_model = T5ForConditionalGeneration.from_pretrained('laituan245/molt5-large', torch_dtype=torch.float16)
+        self.opt_model = T5ForConditionalGeneration.from_pretrained('laituan245/molt5-large', torch_dtype=torch.float32)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         self.llm_tune = llm_tune
@@ -99,8 +99,11 @@ class Blip2T5(Blip2Base):
             raise NotImplementedError()
 
         ## fixme: this is different from the original BLIP2
+        # self.eos_token_id = self.opt_tokenizer(
+        #     "\n", add_special_tokens=False
+        # ).input_ids[0]
         self.eos_token_id = self.opt_tokenizer(
-            "\n", add_special_tokens=False
+            "</s>", add_special_tokens=False
         ).input_ids[0]
 
         self.opt_proj = nn.Linear(
@@ -110,31 +113,26 @@ class Blip2T5(Blip2Base):
     
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens = batch
-        if True:
-            graph_embeds, graph_masks = self.graph_encoder(graphs)
-            if not self.tune_gnn:
-                graph_embeds = graph_embeds.detach()
-            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-                return_dict=True,
-            )
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
-            
-            targets = text_tokens.input_ids.masked_fill(
-                text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
-            )
-            prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
-            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
-        else:
-            prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
-            targets = text_tokens.input_ids.masked_fill(
-                text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
-            )
+        
+        graph_embeds, graph_masks = self.graph_encoder(graphs)
+        if not self.tune_gnn:
+            graph_embeds = graph_embeds.detach()
+        graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=graph_embeds,
+            encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+            return_dict=True,
+        )
+        mol_tokens = self.opt_proj(query_output.last_hidden_state)
+        
+        targets = text_tokens.input_ids.masked_fill(
+            text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
+        )
         with self.maybe_autocast(torch.float32):
+            prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
+            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(torch.float32)
             outputs = self.opt_model(
                 inputs_embeds=prompt_embeds,
                 attention_mask=prompt_tokens.attention_mask,
@@ -186,28 +184,30 @@ class Blip2T5(Blip2Base):
             return_dict=True,
         )
         mol_tokens = self.opt_proj(query_output.last_hidden_state)
-        
-        prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
-        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
+        with self.maybe_autocast(torch.float32):
+            prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
+            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(torch.float32)
+            # prompt_embeds = self.opt_model.encoder.embed_tokens(prompt_tokens.input_ids)
+            # prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
 
-        outputs = self.opt_model.generate(
-            inputs_embeds=prompt_embeds,
-            attention_mask=prompt_tokens.attention_mask,
-            do_sample=do_sample,
-            top_p=top_p,
-            temperature=temperature,
-            num_beams=num_beams,
-            max_length=max_length,
-            min_length=min_length,
-            # pad_token_id=self.pad_token_id,
-            eos_token_id=self.eos_token_id,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            num_return_sequences=num_captions,
-            # use_cache=False,
-        )
-        output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        
-        output_text = [text.strip() for text in output_text]
-        return output_text
+            outputs = self.opt_model.generate(
+                inputs_embeds=prompt_embeds,
+                attention_mask=prompt_tokens.attention_mask,
+                do_sample=do_sample,
+                top_p=top_p,
+                temperature=temperature,
+                num_beams=num_beams,
+                max_length=max_length,
+                min_length=min_length,
+                # pad_token_id=self.pad_token_id,
+                eos_token_id=self.eos_token_id,
+                repetition_penalty=repetition_penalty,
+                length_penalty=length_penalty,
+                num_return_sequences=num_captions,
+                # use_cache=False,
+            )
+            output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            
+            output_text = [text.strip() for text in output_text]
+            return output_text
 
