@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import numpy as np
 from model.help_funcs import caption_evaluate
-from transformers import BertTokenizer
+from transformers import BertTokenizer, BertTokenizerFast
 
 pd.options.display.max_rows = 1000
 pd.options.display.max_columns = 1000
@@ -73,7 +73,8 @@ def read_caption_prediction(args):
         lines = f.readlines()
         lines = [json.loads(line) for line in lines]
 
-    tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+    # tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+    tokenizer = BertTokenizerFast.from_pretrained('allenai/scibert_scivocab_uncased')
     tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         
 
