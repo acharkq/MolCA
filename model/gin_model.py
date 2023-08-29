@@ -3,7 +3,7 @@ from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, degree, softmax, to_dense_batch
 from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, GlobalAttention, Set2Set
 import torch.nn.functional as F
-from torch_scatter import scatter_add
+# from torch_scatter import scatter_add
 from torch_geometric.nn.inits import glorot, zeros
 
 num_atom_type = 120 #including the extra mask tokens

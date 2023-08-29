@@ -16,7 +16,7 @@ class RetrievalDataset(Dataset):
         self.text_name_list.sort()
         self.smiles_name_list = os.listdir(root + 'smiles/')
         self.smiles_name_list.sort()
-        self.tokenizer = BertTokenizer.from_pretrained('./bert_pretrained/')
+        self.tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.use_smiles = args.use_smiles
 
     def get(self, idx):
@@ -86,7 +86,7 @@ class RetrievalDatasetKVPLM(Dataset):
         self.text_name_list.sort()
         # self.smiles_name_list = os.listdir(root + 'smiles/')
         # self.smiles_name_list.sort()
-        self.tokenizer = BertTokenizer.from_pretrained('./bert_pretrained/')
+        self.tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.use_smiles = args.use_smiles
 
     def get(self, idx):
