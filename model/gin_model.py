@@ -301,11 +301,11 @@ class GNN(torch.nn.Module):
 
         h_graph = self.pool(node_representation, batch) # shape = [B, D]
         batch_node, batch_mask = to_dense_batch(node_representation, batch) # shape = [B, n_max, D], 
-        batch_mask = batch_mask.long()
+        batch_mask = batch_mask.bool()
 
         if self.cat_grep:
             batch_node = torch.cat((h_graph.unsqueeze(1), batch_node), dim=1) # shape = [B, n_max+1, D]
-            batch_mask = torch.cat([torch.ones((batch_mask.shape[0], 1), dtype=torch.long, device=batch.device), batch_mask], dim=1)
+            batch_mask = torch.cat([torch.ones((batch_mask.shape[0], 1), dtype=torch.bool, device=batch.device), batch_mask], dim=1)
             return batch_node, batch_mask
         else:
             return batch_node, batch_mask, h_graph
