@@ -1,12 +1,18 @@
 # MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter
 
-Codes of our EMNLP2023 paper. [[Paper Link]()]
+Codes of our EMNLP2023 paper. [[Paper Link](https://openreview.net/forum?id=14WRhMNq7H)]
 
 Authors: Zhiyuan Liu, Sihang Li, Yanchen Luo, Hao Fei, Yixin Cao, Kenji Kawaguchi, Xiang Wang, Tat-Seng Chua
 
-![fig1](./figures/framework_compare.jpg)
+![fig1](./figures/framework_compare.png)
 
-**<center>Figure 1: Comparison of molecular language modeling methods.</center>**
+<p align="center">
+  <img src="./figures/pipeline.png" alt="fig2" width="500"/>
+</p>
+
+![fig3](./figures/stage1.png)
+
+![fig4](./figures/stage23.png)
 
 ## Requirements
 
