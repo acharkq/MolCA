@@ -1,4 +1,4 @@
-name: pth20
+name: molca
 channels:
   - pytorch
   - pyg
