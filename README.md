@@ -6,9 +6,9 @@ Authors: Zhiyuan Liu, Sihang Li, Yanchen Luo, Hao Fei, Yixin Cao, Kenji Kawaguch
 
 ![fig1](./figures/framework_compare.png)
 
-<p align="center">
+<!-- <p align="center">
   <img src="./figures/pipeline.png" alt="fig2" width="500"/>
-</p>
+</p> -->
 
 ![fig3](./figures/stage1.png)
 
