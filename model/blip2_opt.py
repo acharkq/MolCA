@@ -161,8 +161,10 @@ class Blip2OPT(Blip2Base):
         if opt_model == 'facebook/galactica-125m':
             self.opt_model = OPTForCausalLM.from_pretrained(opt_model)
         else:
-            # self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
-            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
+            if torch.cuda.is_bf16_supported():
+                self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
+            else:
+                self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         self.llm_tune = llm_tune
