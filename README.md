@@ -53,7 +53,7 @@ python stage2.py --root 'data/PubChem324k' --devices '0,1' --filename "ft_pubche
 
 ### Evaluation on Our Pretrained Checkpoints 
 
-We share the checkpoints for reproducing results of molecule-text retrieval and for reproducing results of molecue captioning on the CheBI-20 dataset.
+We share the checkpoints for reproducing results of molecule-text retrieval and for reproducing results of molecule captioning on the CheBI-20 dataset.
 
 Please download the checkpoint from this [link](https://ufile.io/6vffm5bg) and unzip it under the `./all_checkpoints` directory.
 
