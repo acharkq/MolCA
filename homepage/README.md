@@ -1,5 +1,5 @@
-# NExT-GPT
-## Any-to-Any Multimodal Large Language Model
+# MolCA
+## Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapte
 
 This is the repository that contains the source code for the [NExT-GPT project page](https://next-gpt.github.io/).
 
