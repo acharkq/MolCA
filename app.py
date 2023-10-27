@@ -9,9 +9,9 @@ from data_provider.stage2_dm import smiles_handler
 
 
 @torch.no_grad()
-def molecule_caption(smiles, temperature):
+def molecule_caption(smiles, prompt, temperature):
     if args.test_ui:
-        return f'test {smiles}, {temperature}'
+        return f'test {smiles}, {prompt}, {temperature}'
     temperature /= 100
     
     ## process graph prompt
@@ -21,7 +21,7 @@ def molecule_caption(smiles, temperature):
         raise gr.Error("The input SMILES is invalid!")
     
     ## process smiles prompt
-    prompt = '[START_I_SMILES]{}[END_I_SMILES]. '.format(smiles[:256])
+    prompt = '[START_I_SMILES]{}[END_I_SMILES]. '.format(smiles[:256]) + prompt
     prompt = smiles_handler(prompt, '<mol>' * 8, True)[0]
     molca.opt_tokenizer.padding_side = 'left'
     prompt_batch = molca.opt_tokenizer([prompt, ],
@@ -47,7 +47,7 @@ def molecule_caption(smiles, temperature):
 if __name__ == '__main__':
     args = get_args()
     args.devices = f'cuda:{args.devices}'
-    args.test_ui = True
+    args.test_ui = False
 
     if not args.test_ui:
         # load model
@@ -58,27 +58,19 @@ if __name__ == '__main__':
         del model
         molca = molca.half().eval().to(args.devices)
 
-    # demo = gr.Interface(
-    #     fn=molecule_caption,
-    #     inputs=[gr.Textbox(label='Input one SMILES'), gr.Slider(0, 100, value=100, label='Temperature')],
-    #     outputs=[gr.Textbox(label='Molecule caption')],
-    # )
-    # demo.launch(share=True)
     with gr.Blocks() as demo:
         gr.HTML(
         """
         <center><h1><b>MolCA</b></h1></center>
         <p style="font-size:20px; font-weight:bold;">This is the demo page of MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter.</p>
-        <p style="font-size:20px; font-weight:bold;">Thank you for trying the demo! If you have any questions or feedback, feel free to contact us.</p>
-        <img src="./figures/finetune.jpg" alt="MolCA Image">
+        <center><img src="/file=./figures/finetune.jpg" alt="MolCA Image" style="width:1000px;"></center>
         <p style="font-size:20px; font-weight:bold;"> You can input one smiles below, and we will generate the molecule's text descriptions. </p>
         """)
-        gr.Image('./figures/molca.jpg')
-        # with gr.Row():
-        inp = gr.Textbox(placeholder="Input one SMILES", label='Input')
+        smiles = gr.Textbox(placeholder="Input one SMILES", label='Input SMILES')
+        prompt = gr.Textbox(placeholder="Customized your own prompt. Note this can give unpredictable results given our model was not pretrained for other prompts.", label='Customized prompt (Default to None)', value='')
         temperature = gr.Slider(0, 100, value=100, label='Temperature')
         btn = gr.Button("Submit")
         out = gr.Textbox(label='Output', placeholder='Molecule caption results')
-        btn.click(fn=molecule_caption, inputs=[inp, temperature], outputs=out)
+        btn.click(fn=molecule_caption, inputs=[smiles, prompt, temperature], outputs=out)
     demo.launch(share=True)
 
