@@ -6,12 +6,16 @@ from model.blip2_stage2 import Blip2Stage2
 from model.blip2_opt import smiles2data
 from torch_geometric.loader.dataloader import Collater
 from data_provider.stage2_dm import smiles_handler
-
+from rdkit import Chem
+from rdkit.Chem import Draw
 
 @torch.no_grad()
 def molecule_caption(smiles, prompt, temperature):
     if args.test_ui:
-        return f'test {smiles}, {prompt}, {temperature}'
+        mol = Chem.MolFromSmiles(smiles)
+        # Define the resolution of the image
+        img = Draw.MolToImage(mol, size=(900,900))
+        return f'test {smiles}, {prompt}, {temperature}', img
     temperature /= 100
     
     ## process graph prompt
@@ -20,6 +24,9 @@ def molecule_caption(smiles, prompt, temperature):
     except:
         raise gr.Error("The input SMILES is invalid!")
     
+    mol = Chem.MolFromSmiles(smiles)
+    img = Draw.MolToImage(mol,size=(900,900))
+
     ## process smiles prompt
     prompt = '[START_I_SMILES]{}[END_I_SMILES]. '.format(smiles[:256]) + prompt
     prompt = smiles_handler(prompt, '<mol>' * 8, True)[0]
@@ -40,7 +47,7 @@ def molecule_caption(smiles, prompt, temperature):
     ## generate results
     with torch.autocast(device_type='cuda', dtype=torch.float16):
         text = molca.generate(samples, temperature=temperature, max_length=256, num_beams=2)[0]
-    return text
+    return text, img
 
 
 
@@ -66,11 +73,19 @@ if __name__ == '__main__':
         <center><img src="/file=./figures/finetune.jpg" alt="MolCA Image" style="width:1000px;"></center>
         <p style="font-size:20px; font-weight:bold;"> You can input one smiles below, and we will generate the molecule's text descriptions. </p>
         """)
+        
         smiles = gr.Textbox(placeholder="Input one SMILES", label='Input SMILES')
+        ## list of examples
+        example_list = ['CC1=C(SC(=[N+]1CC2=CN=C(N=C2N)C)C(CCC(=O)O)O)CCOP(=O)(O)OP(=O)(O)O', 'CCCCCCCCCCCCCCCC/C=C\\OC[C@H](COP(=O)(O)O)O', 'C1=CC=C(C=C1)[As](=O)(O)[O-]', 'CCCCCCCCCCCC(=O)OC(=O)CCCCCCCCCCC', 'C(C(C(=O)O)NC(=O)N)C(=O)O', 'CCCCCCCCCCCCCCCC(=O)OC(CCCCCCCCC)CCCCCCCC(=O)O', 'CC1=CC(=O)C(=C(C1=O)O)OC']
+        gr.Examples(example_list, [smiles,], fn=molecule_caption, label='Example SMILES')
+
         prompt = gr.Textbox(placeholder="Customized your own prompt. Note this can give unpredictable results given our model was not pretrained for other prompts.", label='Customized prompt (Default to None)', value='')
         temperature = gr.Slider(0, 100, value=100, label='Temperature')
         btn = gr.Button("Submit")
-        out = gr.Textbox(label='Output', placeholder='Molecule caption results')
-        btn.click(fn=molecule_caption, inputs=[smiles, prompt, temperature], outputs=out)
+
+        with gr.Row():
+            out = gr.Textbox(label='Caption Output', placeholder='Molecule caption results')
+            img_out = gr.Image(label='Molecule 2D Structure', placeholder="Visualizing the Molecule's 2D structures.")
+        btn.click(fn=molecule_caption, inputs=[smiles, prompt, temperature], outputs=[out, img_out])
     demo.launch(share=True)
 
