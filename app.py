@@ -62,7 +62,7 @@ if __name__ == '__main__':
         gr.HTML(
         """
         <center><h1><b>MolCA</b></h1></center>
-        <p style="font-size:20px; font-weight:bold;">This is the demo page of MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter.</p>
+        <p style="font-size:20px; font-weight:bold;">This is the demo page of <i>MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter</i>. In EMNLP 2023.</p>
         <center><img src="/file=./figures/finetune.jpg" alt="MolCA Image" style="width:1000px;"></center>
         <p style="font-size:20px; font-weight:bold;"> You can input one smiles below, and we will generate the molecule's text descriptions. </p>
         """)
