@@ -69,9 +69,11 @@ if __name__ == '__main__':
         """
         <center><h1><b>MolCA</b></h1></center>
         <p style="font-size:20px; font-weight:bold;">This is the demo page of MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter.</p>
+        <p style="font-size:20px; font-weight:bold;">Thank you for trying the demo! If you have any questions or feedback, feel free to contact us.</p>
         <img src="./figures/finetune.jpg" alt="MolCA Image">
         <p style="font-size:20px; font-weight:bold;"> You can input one smiles below, and we will generate the molecule's text descriptions. </p>
         """)
+        gr.Image('./figures/molca.jpg')
         # with gr.Row():
         inp = gr.Textbox(placeholder="Input one SMILES", label='Input')
         temperature = gr.Slider(0, 100, value=100, label='Temperature')

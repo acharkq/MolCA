@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="description"
+          content="MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter">
+    <meta name="keywords" content="molecule-to-text generation, Large Language Models, AI for Science">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MolCA</title> 
+
+    <script>
+        window.dataLayer = window.dataLayer || [];
+
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+
+        gtag('js', new Date());
+
+        gtag('config', 'G-PYVRSFMDRL');
+    </script>
+
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+          rel="stylesheet">
+    <!-- <link rel="icon" href="./static/images/logo.png"> -->
+    <link rel="stylesheet" href="./static/css/bulma.min.css">
+    <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+    <link rel="stylesheet" href="./static/css/index.css">
+
+    <link rel="stylesheet" href="./static/css/index-gradio.css">
+    <link rel="stylesheet" href="./static/css/live_theme.css">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script defer src="./static/js/fontawesome.all.min.js"></script>
+    <script src="./static/js/bulma-carousel.min.js"></script>
+    <script src="./static/js/bulma-slider.min.js"></script>
+    <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+
+<section class="hero">
+    <div class="hero-body">
+        <div class="container is-max-desktop">
+            <div class="columns is-centered">
+                <div class="column has-text-centered">
+                    <h1 class="title is-1 publication-title"
+                        style="display: flex;flex-direction: row;align-items: center;justify-content: center;margin-bottom: 5px;">MolCA:</h1>
+                    <h1 class="title is-2 publication-title">Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter</h1>
+                    <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://acharkq.github.io/">Zhiyuan Liu</a>,</span>
+            <span class="author-block">Sihang Li</span>,
+                        <span class="author-block">Yanchen Luo,</span>
+                        <span class="author-block">
+              <a href="https://haofei.vip/">Hao Fei</a>,</span>
+                        <span class="author-block"><a href="https://sites.google.com/view/yixin-homepage">Yixin Cao</a>,</span>
+                        <span class="author-block"><a href="https://ml.comp.nus.edu.sg/">Kenji Kawaguchi</a>,</span>
+                        <span class="author-block"><a href="https://xiangwang1223.github.io/">Xiang Wang</a>*,</span>
+                        <span class="author-block"><a href="https://www.chuatatseng.com/">Tat-Seng Chua</a></span>
+                    </div>
+
+                    <div class="is-size-5 publication-authors" style="margin-top: 10px;">
+                        <span class="author-block">National University of Singapore</span>,
+                        <span class="author-block">University of Science and Technology of China</span>
+                        <span class="author-block">Singapore Management University</span>
+                    </div>
+
+                    <div class="is-size-5 publication-authors">
+                        <span class="author-block" style="font-size: 15px;">(<sup>*</sup>Correspondence)</span>
+                    </div>
+
+                    <div class="column has-text-centered">
+                        <div class="publication-links">
+                            <!-- PDF Link. -->
+                            <span class="link-block">
+                <a href="https://arxiv.org/abs/2310.12798"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span>
+
+                            <span class="link-block">
+                <a href="https://c12b8f18ba87a8df6d.gradio.live/" target="_blank"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="fa fa-laugh"></i>
+                  </span>
+                  <span>Demo</span>
+                </a>
+              </span>
+
+                            <!-- Code Link. -->
+                            <span class="link-block">
+                <a href="https://github.com/acharkq/MolCA"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                  </a>
+              </span>
+
+
+                            <span class="link-block">
+                <a href="https://huggingface.co/datasets/acharkq/PubChem324k" target="_blank"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="fa fa-database"></i>
+                  </span>
+                  <span>Dataset</span>
+                  </a>
+              </span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- <section class="section">
+    <div class="container is-max-desktop">
+        <div class="columns is-centered has-text-centered">
+            <div class="column is-full-width">
+                <h2 class="title is-2">Video Presentation</h2>
+                <div class="publication-video">
+                    <iframe src="https://www.youtube.com/embed/aqw2SCWeWD0?si=jIKgOkew2rmRROUy"
+                            frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</section> -->
+
+
+<section class="section">
+    <div class="container is-max-desktop">
+        <!-- Abstract. -->
+        <div class="columns is-centered has-text-centered">
+            <div class="column is-four-fifths">
+                <h2 class="title is-2">Abstract</h2>
+                <div class="content has-text-justified">
+                    <p>
+                        Language Models (LMs) have demonstrated impressive molecule understanding ability on various 1D text-related tasks. However, they inherently lack 2D graph perception — a critical ability of human professionals in comprehending molecules' topological structures. To bridge this gap, we propose <b>MolCA</b>: <u>Mol</u>ecular Graph-Language Modeling with <u>C</u>ross-Modal Projector and Uni-Modal <u>A</u>dapter. MolCA enables an LM (<i>i.e.</i>, Galactica) to understand both text- and graph-based molecular contents via the cross-modal projector. Specifically, the cross-modal projector is implemented as a Q-Former to connect a graph encoder's representation space and an LM's text space. Further, MolCA employs a uni-modal adapter (<i>i.e.</i>, LoRA) for the LM's efficient adaptation to downstream tasks. Unlike previous studies that couple an LM with a graph encoder via cross-modal contrastive learning, MolCA retains the LM's ability of open-ended text generation and augments it with 2D graph information. To showcase its effectiveness, we extensively benchmark MolCA on tasks of molecule captioning, IUPAC name prediction, and molecule-text retrieval, on which MolCA significantly outperforms the baselines.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <!--/ Abstract. -->
+
+        <br>
+    </div>
+</section>
+
+
+<section class="section">
+    <div class="container is-max-desktop">
+
+        <div class="columns is-centered has-text-centered">
+            <h2 class="title is-2">Technical Description</h2>
+            <br>
+        </div>
+        
+        <!-- Architecture -->
+    <div class="columns is-centered">
+        <div class="column is-full-width">
+            <h4 class="title is-3">• Comparison to Previous Molecule-Text Modeling Methods</h4>
+
+            <div class="content has-text-justified">
+                <img class="columns is-centered has-text-centered" src="../figures/framework_compare.png" alt="Teaser" width="95%"
+                     style="margin:0 auto">
+                <p>
+                <ul>
+                    <li>
+                        <b>1D language modeling</b> methods represent molecules by their 1D Simplified Molecular Input Line Entry System (SMILES) strings and process them in a manner similar to texts, as illustrated in Figure 1a. While convenient, treating molecules as strings overlooks the molecules' 2D graph representations, which are crucial to human professionals in comprehending the molecule structures. 
+                    </li>
+                    <li>
+                        <b>Cross-model contrastive learning</b> methods represent molecules as graphs and use a Graph Neural Network as the molecular graph encoder. The graph encoder is trained jointly with an LM through cross-modal contrastive learning, as illustrated in Figure 1b. However, the application scope of cross-modal contrastive learning is limited: it is suitable for retrieval tasks, but is insufficient for open-ended molecule-to-text generation tasks, such as molecule captioning and molecule's IUPAC name prediction. This is because molecule-to-text generation is a conditional generation task. It requires the LM to understand 2D graphs as the generation conditions, which contrastive learning cannot achieve. 
+                    </li>
+                    <li>
+                        <b>MolCA</b> enables the LM to understand 2D graphs as inputs, therefore effectively conditioning the molecule-to-text generation process. To enable the LM to understand 2D graphs, we identify that the key challenge is <b>cross-modal alignment</b>: translating the representations of 2D graphs into 1D soft prompts in the text space so that the LM can understand. This translation is facilitated by the cross-modal projector, bridging the gap between the graph encoder's representation space and the LM's input space, as illustrated in Figure 1c. 
+                    </li>
+                </ul>
+                </p>
+                <br>
+            </div>
+            <br/>
+
+        </div>
+    </div>
+
+        <!-- Trainging Pipeline -->
+        <div class="columns is-centered">
+            <div class="column is-full-width">
+                <h4 class="title is-3">• MolCA's Training Pipeline</h4>
+                As illustrated below, MolCA uses a three-stage training pipeline to integrate its components. The two pretrain stages aim to develop the cross-modal alignment ability of the cross-modal projector.
+                <div class="content has-text-justified">
+                    <br>
+                    <p>
+                    <ul>
+                        <img class="columns is-centered has-text-centered" src="./static/images/stage1.jpg" alt="Teaser" width="95%" style="margin:0 auto">
+                        <br>
+                        <li>
+                            <b>Pretrain Stage 1.</b> The projector and the encoder are trained to extract the molecule features that are the most relevant to the text. This stage endows the resulting model with powerful molecule-text retrieval ability. 
+                        </li>
+                        <br>
+                        <img class="columns is-centered has-text-centered" src="../figures/stage23_cropped.png" alt="Teaser" width="98%" style="margin:0 auto">
+                        <br>
+                        <li>
+                            <b>Pretrain Stage 2 (left).</b> The cross-modal projector is connected to a frozen LM and trained for molecule captioning. This task forces the cross-modal projector to produce soft prompts that the LM can understand
+                        </li>
+                        <li>
+                            <b>Finetune Stage (right).</b> MolCA is fine-tuned for downstream generation tasks. The example shows the prediction of a molecule's IUPAC name.
+                        </li>
+                    </ul>
+                    </p>
+                    <br>
+                </div>
+                <br/>
+
+            </div>
+        </div>
+
+        
+
+</section>
+
+
+<section class="section">
+    <div class="container is-max-desktop">
+
+        <div class="columns is-centered has-text-centered">
+            <h2 class="title is-2">Demonstrations</h2>
+            <br>
+        </div>
+
+        <div class="columns is-centered">
+            <div class="column is-full-width">
+                <!--        <h2 class="title is-3">Generated Images</h2>-->
+                <br/>
+                <!--            Example-1-->
+                <h3 class="title is-4">• Example-1: Molecule Captioning</h3>
+                <div class="content has-text-justified">
+
+                    <div class="wrapper svelte-nab2ao"
+                         style="box-sizing: border-box;border-width: 2px;border-style: solid;border-color: #f66c0f;border-radius: 11px;padding: 25px;padding-top: 30px;padding-bottom: 30px;">
+
+                        <div class="message-wrap svelte-1uvwjgr">
+
+                            <div class="message-row user-row svelte-1uvwjgr">
+                                <div class="avatar-container svelte-1uvwjgr">
+                                    <img class="avatar-image svelte-1uvwjgr" src="./static/images/user.png" alt="avatar-user">
+                                </div>
+                                <div data-testid="user" class="message user svelte-1uvwjgr" dir="ltr" style="border-style: solid;">
+                                    <span class="md svelte-9tftx4 chatbot">
+                                        <img class="columns is-centered has-text-centered" src="./static/images/mol1.jpg" alt="mol1">
+                                        <p>Molecule SMILES: C([C@@H]1[C@H]([C@@H]([C@H](C(O1)O)NS(=O)(=O)O)O)O[C@H]2[C@@H]([C@H](C(=C (O2)C(=O)O)O)O)O)OS(=O)(=O)O</p>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="message-row bot-row svelte-1uvwjgr">
+                                <div class="avatar-container svelte-1uvwjgr">
+                                    <img class="avatar-image svelte-1uvwjgr" src="./static/images/bot.png" alt="avatar-bot"></div>
+                                <div data-testid="bot" class="message bot svelte-1uvwjgr" dir="ltr" style="border-style: solid;">
+                                    <span class="md svelte-9tftx4 chatbot">
+                                      <p>The molecule is a disaccharide that consists of 2-O-(...) residues joined in sequence by a (1->4) glycosidic bond. It is a disaccharide, an amino disaccharide, and a member of sulfamic acids.</p>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!--          End  Example-1-->
+
+                <!--            Example-2-->
+                <h3 class="title is-4">• Example-2: Molecule Captioning</h3>
+                <div class="content has-text-justified">
+
+                    <div class="wrapper svelte-nab2ao"
+                         style="box-sizing: border-box;border-width: 2px;border-style: solid;border-color: #f66c0f;border-radius: 11px;padding: 25px;padding-top: 30px;padding-bottom: 30px;">
+
+                        <div class="message-wrap svelte-1uvwjgr">
+
+                            <div class="message-row user-row svelte-1uvwjgr">
+                                <div class="avatar-container svelte-1uvwjgr">
+                                    <img class="avatar-image svelte-1uvwjgr" src="./static/images/user.png" alt="avatar-user">
+                                </div>
+                                <div data-testid="user" class="message user svelte-1uvwjgr" dir="ltr" style="border-style: solid;">
+                                    <img class="columns is-centered has-text-centered" src="./static/images/mol2.jpg" alt="mol2" style="height: 100px;">
+                                    <span class="md svelte-9tftx4 chatbot">
+                                        <p>Molecule SMILES: CCCCCCCCCCCCCCCCCCCCC(C(=O)O)O</p>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="message-row bot-row svelte-1uvwjgr">
+                                <div class="avatar-container svelte-1uvwjgr">
+                                    <img class="avatar-image svelte-1uvwjgr" src="./static/images/bot.png" alt="avatar-bot"></div>
+                                <div data-testid="bot" class="message bot svelte-1uvwjgr" dir="ltr" style="border-style: solid;">
+                                    <span class="md svelte-9tftx4 chatbot">
+                                      <p>The molecule is a long-chain fatty acid that is behenic acid substituted at position 2 by a hydroxy group. It is a 2-hydroxy fatty acid. It is functionally related to a docosanoic acid. It is a conjugate acid of a 2-hydroxybehenate.</p>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!--          End  Example-2-->
+            </div>
+        </div>
+
+    </div>
+</section>
+
+
+<section class="section">
+    <div class="container is-max-desktop">
+
+        <!--    <div class="columns is-centered has-text-centered">-->
+        <!--        <h2 class="title is-2">Demonstrations</h2>-->
+        <!--      <br>-->
+        <!--    </div>-->
+
+        <div class="columns is-centered">
+            <div class="column is-full-width">
+                <h2 class="title is-3">Related Links</h2>
+                <div class="content has-text-justified">
+                    <p>
+                        This work partially draw inspirations from <a href="https://github.com/salesforce/LAVIS">BLIP-2 and InstructBLIP</a>,
+                        <a href="https://github.com/blender-nlp/MolT5">MolT5</a>, and 
+                        <a href="https://github.com/thunlp/KV-PLM">KV-PLM</a>.
+                        This website is inspired by <a href="https://next-gpt.github.io/">NExT-GPT</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+
+<section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+        <h2 class="title">BibTeX</h2>
+        <pre><code>@inproceedings{liu2023molca,
+    title={MolCA: Molecular Graph-Language Modeling with Cross-Modal Projector and Uni-Modal Adapter},
+    author={Liu, Zhiyuan and Li, Sihang and Luo, Yanchen and Fei, Hao and Cao, Yixin and Kawaguchi, Kenji and Wang, Xiang and Chua, Tat-Seng},
+    booktitle={EMNLP},
+    year={2023},
+    url={https://openreview.net/forum?id=14WRhMNq7H}
+}
+</code></pre>
+    </div>
+</section>
+
+
+<footer class="footer">
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-8">
+                <div class="content">
+                    <p style="text-align: center;">
+                        The webpage is built based on <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>
