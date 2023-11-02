@@ -37,6 +37,8 @@ class Blip2Stage1(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
+        if isinstance(self.args.devices, list) and len(self.args.devices) == 1 and self.args.mode == "eval":
+            return 0
         batch_size = batch[-1].size(0)
         blip2_loss = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
