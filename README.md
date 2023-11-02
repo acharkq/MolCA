@@ -71,13 +71,13 @@ Please download the checkpoint from this [link](https://ufile.io/6vffm5bg) and u
 **Molecule-Text Retrieval for PCDes.** Run the following script for evaluation on the PCDes dataset.
 
 ```bash
-python stage1.py --root 'data/kv_data' --gtm --lm --devices '0,1'  --filename pcdes_evaluation --init_checkpoint "all_checkpoints/share/stage1.ckpt" --rerank_cand_num 128 --num_query_token 8 --match_batch_size 64 --mode eval
+python stage1.py --root 'data/kv_data' --gtm --lm --devices '[0]'  --filename pcdes_evaluation --init_checkpoint "all_checkpoints/share/stage1.ckpt" --rerank_cand_num 128 --num_query_token 8 --match_batch_size 64 --mode eval
 ```
 
 **Molecule-Text Retrieval for MoMu.** Run the following script for evaluation on the MoMu dataset.
 
 ```bash
-python stage1.py --root 'data/kv_data' --gtm --lm --devices '0,1'  --filename momu_evaluation --init_checkpoint "all_checkpoints/share/stage1.ckpt" --rerank_cand_num 128 --num_query_token 8 --match_batch_size 64 --mode eval --use_phy_eval
+python stage1.py --root 'data/kv_data' --gtm --lm --devices '[0]'  --filename momu_evaluation --init_checkpoint "all_checkpoints/share/stage1.ckpt" --rerank_cand_num 128 --num_query_token 8 --match_batch_size 64 --mode eval --use_phy_eval
 ```
 
 **Molecule Captioning.** Run the following script for evaluation on the CheBI-20 dataset.
