@@ -16,7 +16,7 @@ def molecule_caption(smiles, prompt, temperature):
         # Define the resolution of the image
         img = Draw.MolToImage(mol, size=(900,900))
         return f'test {smiles}, {prompt}, {temperature}', img
-    temperature /= 100
+    # temperature /= 100
     
     ## process graph prompt
     try:
@@ -46,7 +46,7 @@ def molecule_caption(smiles, prompt, temperature):
     
     ## generate results
     with torch.autocast(device_type='cuda', dtype=torch.float16):
-        text = molca.generate(samples, temperature=temperature, max_length=256, num_beams=2)[0]
+        text = molca.generate(samples, temperature=temperature, max_length=256, num_beams=2, do_sample=True)[0]
     return text, img
 
 
@@ -80,7 +80,7 @@ if __name__ == '__main__':
         gr.Examples(example_list, [smiles,], fn=molecule_caption, label='Example SMILES')
 
         prompt = gr.Textbox(placeholder="Customized your own prompt. Note this can give unpredictable results given our model was not pretrained for other prompts.", label='Customized prompt (Default to None)', value='')
-        temperature = gr.Slider(0, 100, value=100, label='Temperature')
+        temperature = gr.Slider(0, 1, value=1, label='Temperature')
         btn = gr.Button("Submit")
 
         with gr.Row():
