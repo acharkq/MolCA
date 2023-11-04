@@ -80,7 +80,7 @@ if __name__ == '__main__':
         gr.Examples(example_list, [smiles,], fn=molecule_caption, label='Example SMILES')
 
         prompt = gr.Textbox(placeholder="Customized your own prompt. Note this can give unpredictable results given our model was not pretrained for other prompts.", label='Customized prompt (Default to None)', value='')
-        temperature = gr.Slider(0, 1, value=1, label='Temperature')
+        temperature = gr.Slider(0.1, 1, value=1, label='Temperature')
         btn = gr.Button("Submit")
 
         with gr.Row():
