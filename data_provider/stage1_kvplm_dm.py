@@ -21,12 +21,8 @@ class Stage1KVPLMDM(LightningDataModule):
         self.batch_size = batch_size
         self.match_batch_size = args.match_batch_size
         self.num_workers = num_workers
-        if root.find('PubChemDataset_v4') > 0:
-            print('Loading MoLa dataset')
-            self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, args.text_aug)
-        else:
-            print('Loading old veresion dataset')
-            self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug)
+        print('Loading dataset')
+        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug)
         self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug)
         self.val_dataset_match = RetrievalDatasetKVPLM(root + '/valid/', args).shuffle()
         if args.use_phy_eval:
