@@ -152,7 +152,7 @@ class Stage2DM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt)
+        self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt, args.filtered_cid_path)
         self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
         self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
         self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
@@ -243,5 +243,6 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
         parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
+        parser.add_argument('--filtered_cid_path', type=str, default=None)
         return parent_parser
     

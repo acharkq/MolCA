@@ -3,7 +3,7 @@ from torch_geometric.data import Dataset
 import os
 
 class MoleculeCaption(Dataset):
-    def __init__(self, root, text_max_len, prompt=None):
+    def __init__(self, root, text_max_len, prompt=None, filtered_cid_path=None):
         super(MoleculeCaption, self).__init__(root)
         self.root = root
         self.text_max_len = text_max_len
@@ -19,6 +19,29 @@ class MoleculeCaption(Dataset):
             self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
         else:
             self.prompt = prompt
+
+        if filtered_cid_path is not None:
+            with open(filtered_cid_path, 'r') as f:
+                self.filtered_cid_set = [line.strip() for line in f.readlines()]
+                self.filtered_cid_set = set(self.filtered_cid_set)
+            filtered_graph_name_list = []
+            for g in self.graph_name_list:
+                cid = g.split('_')[1][:-3]
+                if cid in self.filtered_cid_set:
+                    filtered_graph_name_list.append(g)
+            self.graph_name_list = filtered_graph_name_list
+            filtered_text_name_list = []
+            for t in self.text_name_list:
+                cid = t.split('_')[1][:-4]
+                if cid in self.filtered_cid_set:
+                    filtered_text_name_list.append(t)
+            self.text_name_list = filtered_text_name_list
+            filtered_smiles_name_list = []
+            for s in self.smiles_name_list:
+                cid = s.split('_')[1][:-4]
+                if cid in self.filtered_cid_set:
+                    filtered_smiles_name_list.append(s)
+            self.smiles_name_list = filtered_smiles_name_list
 
     def get(self, index):
         return self.__getitem__(index)
