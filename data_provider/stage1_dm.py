@@ -20,7 +20,7 @@ class Stage1DM(LightningDataModule):
         self.match_batch_size = args.match_batch_size
         self.num_workers = num_workers
         print('Loading PubChem324k dataset')
-        self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, args.text_aug, args.filter_cid_path)
+        self.train_dataset = GINPretrainDataset(root+'/pretrain/', text_max_len, graph_aug, args.text_aug, args.filtered_cid_path)
         self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug)
         self.val_dataset_match = RetrievalDataset(root + '/valid/', args).shuffle()
         self.test_dataset_match = RetrievalDataset(root + '/test/', args).shuffle()
@@ -76,6 +76,6 @@ class Stage1DM(LightningDataModule):
         parser.add_argument('--graph_aug', type=str, default='dnodes')
         parser.add_argument('--text_aug', action='store_true', default=False)
         parser.add_argument('--use_phy_eval', action='store_true', default=False)
-        parser.add_argument('--filter_cid_path', type=str, default=None)
+        parser.add_argument('--filtered_cid_path', type=str, default=None)
         return parent_parser
     

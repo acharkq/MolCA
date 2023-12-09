@@ -128,7 +128,7 @@ class Blip2Stage2(pl.LightningModule):
             )
             self.scheduler = None
         else:
-            self.trainer.reset_train_dataloader()
+            self.trainer.fit_loop.setup_data()
             warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
             optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
             if self.args.scheduler == 'linear_warmup_cosine_lr':
@@ -227,7 +227,8 @@ class Blip2Stage2(pl.LightningModule):
                 max_length=self.max_len,
                 min_length=self.min_len
             )
-            return predictions, texts
+            self.list_predictions.append(predictions)
+            self.list_targets.append(texts)
         elif dataloader_idx == 2:
             reaction_tokens, _, _ = batch
             batch_size = reaction_tokens.input_ids.shape[0]
@@ -237,12 +238,19 @@ class Blip2Stage2(pl.LightningModule):
             return loss['loss']
         else:
             raise NotImplementedError
-
-    def validation_epoch_end(self, outputs):
+    
+    def on_validation_epoch_start(self) -> None:
+        self.list_predictions = []
+        self.list_targets = []
+    
+    def on_validation_epoch_end(self) -> None:
+    # def validation_epoch_end(self, outputs):
         if (self.current_epoch+1) % self.caption_eval_epoch != 0:
             return 
-        caption_outputs = outputs[1]
-        list_predictions, list_targets = zip(*caption_outputs)
+        # caption_outputs = outputs[1]
+        # list_predictions, list_targets = zip(*caption_outputs)
+        list_predictions = self.list_predictions
+        list_targets = self.list_targets
         predictions = [i for ii in list_predictions for i in ii]
         targets = [i for ii in list_targets for i in ii]
 

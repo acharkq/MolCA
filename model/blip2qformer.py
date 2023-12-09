@@ -8,9 +8,12 @@ import logging
 import os
 import torch
 import torch.distributed as dist
+from torch import Tensor
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
+from typing import Any, Iterable, Iterator, List, Optional, Sized, Tuple, Union, Dict
+from model.help_funcs import pad_and_concat
 
 # from lavis.common.registry import registry
 # from lavis.models.base_model import all_gather_with_grad, concat_all_gather
@@ -20,7 +23,7 @@ from lavis.models.blip2_models.blip2 import (
 from lavis.models.blip_models.blip_outputs import BlipOutput
 from lavis.common.dist_utils import is_dist_avail_and_initialized
 from model.blip2 import Blip2Base
-from pytorch_lightning.utilities import distributed
+# from pytorch_lightning.utilities import distributed
 
 @torch.no_grad()
 def concat_all_gather(tensor):
@@ -41,8 +44,22 @@ def concat_all_gather(tensor):
     print('running here')
     return output
 
+# @torch.no_grad()
+# def pl_concat_all_gather(tensor):
+#     """
+#     Performs all_gather operation on the provided tensors.
+#     *** Warning ***: torch.distributed.all_gather has no gradient.
+#     """
+#     # if use distributed training
+#     if not is_dist_avail_and_initialized():
+#         return tensor
+
+#     tensors_gather = distributed.gather_all_tensors(tensor)
+#     output = torch.cat(tensors_gather, dim=0)
+#     return output
+
 @torch.no_grad()
-def pl_concat_all_gather(tensor):
+def pl_concat_all_gather(tensor, padding=False, fill_value=0):
     """
     Performs all_gather operation on the provided tensors.
     *** Warning ***: torch.distributed.all_gather has no gradient.
@@ -51,10 +68,73 @@ def pl_concat_all_gather(tensor):
     if not is_dist_avail_and_initialized():
         return tensor
 
-    tensors_gather = distributed.gather_all_tensors(tensor)
-    output = torch.cat(tensors_gather, dim=0)
+    tensors_gather = gather_all_tensors(tensor)
+    if padding:
+        output = pad_and_concat(tensors_gather, fill_value=fill_value).detach()
+    else:
+        output = torch.cat(tensors_gather, dim=0)
     return output
 
+
+def gather_all_tensors(*args: Any, **kwargs: Any) -> Any:
+    return _gather_all_tensors(*args, **kwargs)
+
+def _gather_all_tensors(result: Tensor, group: Optional[Any] = None) -> List[Tensor]:
+    """Function to gather all tensors from several DDP processes onto a list that is broadcasted to all processes.
+
+    Works on tensors that have the same number of dimensions, but where each dimension may differ. In this case
+    tensors are padded, gathered and then trimmed to secure equal workload for all processes.
+
+    Args:
+        result: The value to sync
+        group: The process group to gather results from. Defaults to all processes (world)
+
+    Return:
+        gathered_result: List with size equal to the process group where
+            gathered_result[i] corresponds to result tensor from process i
+    """
+    if group is None:
+        group = torch.distributed.group.WORLD
+
+    # Convert tensors to contiguous format
+    result = result.contiguous()
+
+    world_size = torch.distributed.get_world_size(group)
+    torch.distributed.barrier(group=group)
+
+    # If the tensor is scalar, things are easy
+    if result.ndim == 0:
+        return _simple_gather_all_tensors(result, group, world_size)
+
+    # 1. Gather sizes of all tensors
+    local_size = torch.tensor(result.shape, device=result.device)
+    local_sizes = [torch.zeros_like(local_size) for _ in range(world_size)]
+    torch.distributed.all_gather(local_sizes, local_size, group=group)
+    max_size = torch.stack(local_sizes).max(dim=0).values
+    all_sizes_equal = all(all(ls == max_size) for ls in local_sizes)
+
+    # 2. If shapes are all the same, then do a simple gather:
+    if all_sizes_equal:
+        return _simple_gather_all_tensors(result, group, world_size)
+
+    # 3. If not, we need to pad each local tensor to maximum size, gather and then truncate
+    pad_dims = []
+    pad_by = (max_size - local_size).detach().cpu()
+    for val in reversed(pad_by):
+        pad_dims.append(0)
+        pad_dims.append(val.item())
+    result_padded = F.pad(result, pad_dims)
+    gathered_result = [torch.zeros_like(result_padded) for _ in range(world_size)]
+    torch.distributed.all_gather(gathered_result, result_padded, group)
+    for idx, item_size in enumerate(local_sizes):
+        slice_param = [slice(dim_size) for dim_size in item_size]
+        gathered_result[idx] = gathered_result[idx][slice_param]
+    return gathered_result
+
+def _simple_gather_all_tensors(result: Tensor, group: Any, world_size: int) -> List[Tensor]:
+    gathered_result = [torch.zeros_like(result) for _ in range(world_size)]
+    torch.distributed.all_gather(gathered_result, result, group)
+    return gathered_result
 
 # @registry.register_model("blip2")
 # @registry.register_model("blip2_feature_extractor")

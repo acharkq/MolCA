@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 
 class GINPretrainDataset(Dataset):
-    def __init__(self, root, text_max_len, graph_aug, text_aug, filter_cid_path=None):
+    def __init__(self, root, text_max_len, graph_aug, text_aug, filtered_cid_path=None):
         super(GINPretrainDataset, self).__init__(root)
         self.root = root
         self.graph_aug = graph_aug
@@ -16,8 +16,8 @@ class GINPretrainDataset(Dataset):
         self.text_name_list = os.listdir(root+'text/')
         self.text_name_list.sort()
         self.tokenizer = None
-        if filter_cid_path is not None:
-            with open(filter_cid_path, 'r') as f:
+        if filtered_cid_path is not None:
+            with open(filtered_cid_path, 'r') as f:
                 self.filtered_cid_set = [line.strip() for line in f.readlines()]
                 self.filtered_cid_set = set(self.filtered_cid_set)
             filtered_graph_name_list = []

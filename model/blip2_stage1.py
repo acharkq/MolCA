@@ -22,7 +22,7 @@ class Blip2Stage1(pl.LightningModule):
         
 
     def configure_optimizers(self):
-        self.trainer.reset_train_dataloader()
+        self.trainer.fit_loop.setup_data()
         warmup_steps = min(len(self.trainer.train_dataloader), self.args.warmup_steps)
         optimizer = optim.AdamW(self.parameters(), lr=self.args.init_lr, weight_decay=self.args.weight_decay)
         if self.args.scheduler == 'linear_warmup_cosine_lr':
@@ -48,7 +48,7 @@ class Blip2Stage1(pl.LightningModule):
         self.log("val_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
     
-    def validation_epoch_end(self, outputs) -> None:
+    def on_validation_epoch_end(self) -> None:
         if self.current_epoch == 0 or (self.current_epoch + 1) % self.args.retrieval_eval_epoch != 0:
             return
         if self.trainer.global_rank == 0:

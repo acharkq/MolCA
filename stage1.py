@@ -48,18 +48,19 @@ def main(args):
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
     if len(args.devices.split(',')) > 1:
-        strategy = strategies.DDPSpawnStrategy(find_unused_parameters=find_unused_parameters)
+        strategy = strategies.DDPStrategy(find_unused_parameters=find_unused_parameters, start_method='spawn')
     else:
         strategy = None
         args.devices = eval(args.devices)
         print(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
-    trainer = Trainer.from_argparse_args(args,
-                                         callbacks=callbacks,
-                                         strategy=strategy,
-                                         logger=logger,
-                                        #  limit_train_batches=100,
-                                         )
+    # trainer = Trainer.from_argparse_args(args,
+    #                                      callbacks=callbacks,
+    #                                      strategy=strategy,
+    #                                      logger=logger,
+    #                                     #  limit_train_batches=100,
+    #                                      )
+    trainer = Trainer(accelerator=args.accelerator, devices=args.devices, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger, limit_train_batches=10)
     if args.mode == 'train':
         trainer.fit(model, datamodule=dm)
     elif args.mode == 'eval':
@@ -76,17 +77,23 @@ if __name__ == '__main__':
     # GPU
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     # MM settings
-    parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=False)
-    parser.add_argument('--lm', action='store_true', help='use language modeling or not', default=False)
+    parser.add_argument('--gtm', action='store_true', help='use graph-text matching or not', default=True)
+    parser.add_argument('--lm', action='store_true', help='use language modeling or not', default=True)
     parser.add_argument('--mode', type=str, default='train')
-    parser = Trainer.add_argparse_args(parser)
+    parser.add_argument('--accelerator', type=str, default='gpu')
+    parser.add_argument('--devices', type=str, default='0,1,2,3')
+    parser.add_argument('--precision', type=str, default='bf16-mixed')
+    parser.add_argument('--max_epochs', type=int, default=50)
+    parser.add_argument('--check_val_every_n_epoch', type=int, default=1)
+    # parser.add_argument('--save_every_n_epochs', type=int, default=1)
+    # parser = Trainer.add_argparse_args(parser)
     parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
     parser = Stage1DM.add_model_specific_args(parser)
-    parser.set_defaults(accelerator='gpu',
-                        devices='0,1,2,3',
-                        precision='bf16',
-                        max_epochs=50,
-                        check_val_every_n_epoch=1)
+    # parser.set_defaults(accelerator='gpu',
+    #                     devices='0,1,2,3',
+    #                     precision='bf16',
+    #                     max_epochs=50,
+    #                     check_val_every_n_epoch=1)
     args = parser.parse_args()
     
     print("=========================================")
