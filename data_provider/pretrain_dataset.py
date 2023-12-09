@@ -17,6 +17,7 @@ class GINPretrainDataset(Dataset):
         self.text_name_list.sort()
         self.tokenizer = None
         if filtered_cid_path is not None:
+            print('before filtering', len(self.graph_name_list), len(self.text_name_list))
             with open(filtered_cid_path, 'r') as f:
                 self.filtered_cid_set = [line.strip() for line in f.readlines()]
                 self.filtered_cid_set = set(self.filtered_cid_set)
@@ -34,6 +35,7 @@ class GINPretrainDataset(Dataset):
                 if cid in self.filtered_cid_set:
                     filtered_text_name_list.append(t)
             self.text_name_list = filtered_text_name_list
+            print('after filtering', len(self.graph_name_list), len(self.text_name_list))
             
 
     def get(self, index):
