@@ -1,5 +1,5 @@
 import torch
-from torch_geometric.data import Dataset
+from torch_geometric.data import Dataset, InMemoryDataset
 import os
 
 class MoleculeCaption(Dataset):
@@ -96,27 +96,40 @@ class MoleculeCaption(Dataset):
                                         return_attention_mask=True)
         return sentence_token
 
-if __name__ == '__main__':
-    import numpy as np
-    pretrain = MoleculeCaption('../data/PubChem324k/pretrain/', 1000, '', filtered_cid_path='../data/PubChem324k/filtered_pretrain_cids.txt')
-    train = MoleculeCaption('../data/PubChem324k/train/', 1000, '')
-    valid = MoleculeCaption('../data/PubChem324k/valid/', 1000, '')
-    test = MoleculeCaption('../data/PubChem324k/test/', 1000, '')
 
-    for subset in [pretrain, train, valid, test]:
-        g_lens = []
-        t_lens = []
-        for i in range(len(subset)):  
-            data_graph, text, _ = subset[i]
-            g_lens.append(len(data_graph.x))
-            t_lens.append(len(text.split()))
-            # print(len(data_graph.x))
-        g_lens = np.asarray(g_lens)
-        t_lens = np.asarray(t_lens)
-        print('------------------------')
-        print(g_lens.mean())
-        print(g_lens.min())
-        print(g_lens.max())
-        print(t_lens.mean())
-        print(t_lens.min())
-        print(t_lens.max())
+class MoleculeCaptionV2(InMemoryDataset):
+    def __init__(self, path, text_max_len, prompt=None):
+        super(MoleculeCaptionV2, self).__init__()
+        self.data, self.slices = torch.load(path)
+
+        self.path = path
+        self.text_max_len = text_max_len
+        
+        if not prompt:
+            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
+        else:
+            self.prompt = prompt
+        self.perm = None
+
+    def __getitem__(self, index):
+        if self.perm is not None:
+            index = self.perm[index]
+        data = self.get(index)
+        smiles = data.smiles
+        assert len(smiles.split('\n')) == 1
+
+        if self.prompt.find('{}') >= 0:
+            smiles_prompt = self.prompt.format(smiles[:128])
+        else:
+            smiles_prompt = self.prompt
+        text = data.text.split('\n')[:100]
+        text = ' '.join(text) + '\n'
+        return data, text, smiles_prompt
+    
+    def shuffle(self):
+        self.perm = torch.randperm(len(self)).tolist()
+        return self
+
+if __name__ == '__main__':
+    dataset = MoleculeCaptionV2('./data/PubChem324kV2/pretrain.pt', 128)
+    print(dataset[0])

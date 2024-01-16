@@ -6,7 +6,7 @@ import torch_geometric
 # from torch_geometric.loader import DataLoader
 from torch.utils.data import DataLoader
 from torch_geometric.loader.dataloader import Collater
-from data_provider.molecule_caption_dataset import MoleculeCaption
+from data_provider.molecule_caption_dataset import MoleculeCaption, MoleculeCaptionV2
 import re
 
 # we split individual characters inside special tokens like [START_DNA]
@@ -159,10 +159,16 @@ class Stage2DM(LightningDataModule):
         self.text_max_len = text_max_len
         self.prompt = args.prompt
         self.graph_only = args.graph_only
-        self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt, args.filtered_cid_path)
-        self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
-        self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
-        self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
+        if False:
+            self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt, args.filtered_cid_path)
+            self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
+            self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
+            self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
+        else:
+            self.pretrain_dataset = MoleculeCaptionV2(root+f'pretrain.pt', text_max_len, self.prompt)
+            self.train_dataset = MoleculeCaptionV2(root+f'train.pt', text_max_len, self.prompt)
+            self.val_dataset = MoleculeCaptionV2(root + f'valid.pt', text_max_len, self.prompt)
+            self.test_dataset = MoleculeCaptionV2(root + f'test.pt', text_max_len, self.prompt)
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
         self.is_gal = args.opt_model.find('galactica') >= 0
