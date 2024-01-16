@@ -30,13 +30,13 @@ def main(args):
     
     print('total params:', sum(p.numel() for p in model.parameters()))
 
+    tokenizer = model.blip2qformer.tokenizer
     # data
     if args.root.find('kv') >= 0:
         dm = Stage1KVPLMDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
     else:
-        dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
-    dm.train_dataset.tokenizer = model.blip2qformer.tokenizer
-    dm.val_dataset.tokenizer = model.blip2qformer.tokenizer
+        dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer,
+                      args)
     model.val_match_loader = dm.val_match_loader
     model.test_match_loader = dm.test_match_loader
 
