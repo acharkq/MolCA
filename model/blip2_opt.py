@@ -159,7 +159,7 @@ class Blip2OPT(Blip2Base):
         self.collater = Collater([], [])
         
         if opt_model == 'facebook/galactica-125m':
-            self.opt_model = OPTForCausalLM.from_pretrained(opt_model)
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
         else:
             if torch.cuda.is_bf16_supported():
                 self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)

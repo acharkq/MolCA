@@ -50,7 +50,7 @@ def main(args):
     if len(args.devices.split(',')) > 1:
         strategy = strategies.DDPStrategy(find_unused_parameters=find_unused_parameters, start_method='spawn')
     else:
-        strategy = None
+        strategy = 'auto'
         args.devices = eval(args.devices)
         print(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')

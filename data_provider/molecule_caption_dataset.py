@@ -21,6 +21,7 @@ class MoleculeCaption(Dataset):
             self.prompt = prompt
 
         if filtered_cid_path is not None:
+            print('before filtering', len(self.graph_name_list), len(self.text_name_list), len(self.smiles_name_list))
             with open(filtered_cid_path, 'r') as f:
                 self.filtered_cid_set = [line.strip() for line in f.readlines()]
                 self.filtered_cid_set = set(self.filtered_cid_set)
@@ -42,6 +43,7 @@ class MoleculeCaption(Dataset):
                 if cid in self.filtered_cid_set:
                     filtered_smiles_name_list.append(s)
             self.smiles_name_list = filtered_smiles_name_list
+            print('after filtering', len(self.graph_name_list), len(self.text_name_list), len(self.smiles_name_list))
 
     def get(self, index):
         return self.__getitem__(index)
@@ -96,10 +98,10 @@ class MoleculeCaption(Dataset):
 
 if __name__ == '__main__':
     import numpy as np
-    pretrain = MoleculeCaption('../data/PubChemDataset_v4/pretrain/', 1000, '')
-    train = MoleculeCaption('../data/PubChemDataset_v4/train/', 1000, '')
-    valid = MoleculeCaption('../data/PubChemDataset_v4/valid/', 1000, '')
-    test = MoleculeCaption('../data/PubChemDataset_v4/test/', 1000, '')
+    pretrain = MoleculeCaption('../data/PubChem324k/pretrain/', 1000, '', filtered_cid_path='../data/PubChem324k/filtered_pretrain_cids.txt')
+    train = MoleculeCaption('../data/PubChem324k/train/', 1000, '')
+    valid = MoleculeCaption('../data/PubChem324k/valid/', 1000, '')
+    test = MoleculeCaption('../data/PubChem324k/test/', 1000, '')
 
     for subset in [pretrain, train, valid, test]:
         g_lens = []

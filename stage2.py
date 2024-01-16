@@ -82,7 +82,7 @@ def main(args):
         else:
             strategy = MyDDPStrategy(find_unused_parameters=True, start_method='spawn')
     else:
-        strategy = None
+        strategy = 'auto'
         args.devices = eval(args.devices)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     # trainer = Trainer.from_argparse_args(args,

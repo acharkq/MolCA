@@ -48,27 +48,16 @@ def get_module_state_dict(state_dict, module_name):
 # peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
 class Blip2Stage2(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        if self.llm_tune != 'full':
-            to_be_removed = []
-            for key in checkpoint['state_dict']:
-                if key.startswith('blip2opt.opt_model') or key.startswith('blip2opt.llm_model'):
+        # checkpoint.pop('optimizer_states')
+        to_be_removed = []
+        for key, value in checkpoint['state_dict'].items():
+            try:
+                if not self.get_parameter(key).requires_grad:
                     to_be_removed.append(key)
-            for key in to_be_removed:
-                checkpoint['state_dict'].pop(key)
-        if isinstance(self.args.save_every_n_epochs, int) and self.args.save_every_n_epochs > 0:
-            if self.llm_tune == 'lora' and (self.current_epoch + 1) % self.args.save_every_n_epochs == 0:
-                if self.local_rank == 0: # manually fix a bug in peft module
-                    if self.args.peft_config:
-                        peft_config = LoraConfig(**LoraConfig.from_json_file(self.args.peft_config))
-                    else:
-                        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=self.args.lora_r, lora_alpha=self.args.lora_alpha, lora_dropout=self.args.lora_dropout)
-                    if hasattr(self.blip2opt, 'opt_model'):
-                        self.blip2opt.opt_model.peft_config['default'] = peft_config
-                        self.blip2opt.opt_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-                    elif hasattr(self.blip2opt, 'llm_model'):
-                        self.blip2opt.llm_model.peft_config['default'] = peft_config
-                        self.blip2opt.llm_model.save_pretrained(os.path.join(self.logger.save_dir, f'lora_epoch_{self.current_epoch}'))
-        return super().on_save_checkpoint(checkpoint)
+            except AttributeError:
+                to_be_removed.append(key)
+        for key in to_be_removed:
+            checkpoint['state_dict'].pop(key)
     
     def __init__(self, args):
         super().__init__()
@@ -148,7 +137,7 @@ class Blip2Stage2(pl.LightningModule):
 
         all_predictions = [None for _ in range(self.trainer.world_size)]
         all_targets = [None for _ in range(self.trainer.world_size)]
-
+        
         dist.all_gather_object(all_predictions, predictions)
         dist.all_gather_object(all_targets, targets)
         if self.global_rank == 0:
@@ -256,9 +245,13 @@ class Blip2Stage2(pl.LightningModule):
 
         all_predictions = [None for _ in range(self.trainer.world_size)]
         all_targets = [None for _ in range(self.trainer.world_size)]
-        
-        dist.all_gather_object(all_predictions, predictions)
-        dist.all_gather_object(all_targets, targets)
+        try:
+            dist.all_gather_object(all_predictions, predictions)
+            dist.all_gather_object(all_targets, targets)
+        except RuntimeError:
+            all_predictions = [predictions]
+            all_targets = [targets]
+
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
@@ -323,7 +316,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--peft_config', type=str, default=None)
         parser.add_argument('--peft_dir', type=str, default='')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=0)
+        parser.add_argument('--save_every_n_epochs', type=int, default=10)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

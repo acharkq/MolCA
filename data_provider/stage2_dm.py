@@ -37,11 +37,15 @@ def _insert_split_marker(m: re.Match):
     return f"{start_token}{sequence}{SPLIT_MARKER}{end_token}"
 
 
-def smiles_handler(text, mol_ph, is_gal=True):
+def smiles_handler(text, mol_ph, is_gal=True, graph_only=False):
     smiles_list = []
     for match in CUSTOM_SEQ_RE.finditer(text):
         smiles = match.group(3)
         smiles_list.append(smiles)
+
+    if graph_only:
+        text = CUSTOM_SEQ_RE.sub(r'%s' % (mol_ph), text)
+        return text, smiles_list
     if is_gal:
         text = CUSTOM_SEQ_RE.sub(r'\1\3\4%s' % (mol_ph), text)
         text = escape_custom_split_sequence(text)
@@ -67,22 +71,23 @@ def escape_custom_split_sequence(text):
     return CUSTOM_SEQ_RE.sub(_insert_split_marker, text)
 
 class TrainCollater:
-    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True, graph_only=False):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         self.mol_ph = mol_ph
         self.mol_token_id = mol_token_id
         self.is_gal = is_gal
+        self.graph_only = graph_only
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
         graphs = self.collater(graphs)
         
         ## deal with prompt
-        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
+        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
 
-        self.tokenizer.paddding_side = 'left'
+        self.tokenizer.padding_side = 'left'
         smiles_prompt_tokens = self.tokenizer(text=smiles_prompt, 
                                               truncation=False,
                                               padding='longest',
@@ -93,7 +98,7 @@ class TrainCollater:
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
 
-        self.tokenizer.paddding_side = 'right'
+        self.tokenizer.padding_side = 'right'
         text_tokens = self.tokenizer(text=texts,
                                      truncation=True,
                                      padding='longest',
@@ -105,21 +110,22 @@ class TrainCollater:
     
 
 class InferenceCollater:
-    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True, graph_only=False):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         self.mol_ph = mol_ph
         self.mol_token_id = mol_token_id
         self.is_gal = is_gal
+        self.graph_only = graph_only
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
         graphs = self.collater(graphs)
-        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
+        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
 
         ## deal with prompt
-        self.tokenizer.paddding_side = 'left'
+        self.tokenizer.padding_side = 'left'
         smiles_prompt_tokens = self.tokenizer(smiles_prompt, 
                                               return_tensors='pt', 
                                               add_special_tokens=True,
@@ -152,6 +158,7 @@ class Stage2DM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
+        self.graph_only = args.graph_only
         self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt, args.filtered_cid_path)
         self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
         self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
@@ -180,7 +187,7 @@ class Stage2DM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
             )
         elif self.mode == 'ft':
             loader = DataLoader(
@@ -191,7 +198,7 @@ class Stage2DM(LightningDataModule):
                 pin_memory=False,
                 drop_last=True,
                 persistent_workers=True,
-                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+                collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
             )
         else:
             raise NotImplementedError
@@ -207,7 +214,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         test_loader = DataLoader(
             self.test_dataset,
@@ -217,7 +224,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         return [val_loader, test_loader]
     
@@ -230,7 +237,7 @@ class Stage2DM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         return loader
 
@@ -244,5 +251,6 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         parser.add_argument('--filtered_cid_path', type=str, default=None)
+        parser.add_argument('--graph_only', action='store_true', default=False)
         return parent_parser
     
