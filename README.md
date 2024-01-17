@@ -35,7 +35,7 @@ conda env create -f environment.yml
 
 ## Dataset
 
-* **PubChem324k**. Download the dataset from [link](https://huggingface.co/datasets/acharkq/PubChem324k), and unzip it under the `./data/` directory.
+* **PubChem324k**. Download the dataset from [link](https://huggingface.co/datasets/acharkq/PubChem324kV2), and unzip it under the `./data/` directory.
 * **CheBI-20, KV-PLM, and MoMu.** Unzip the `./dataset.zip` under the `./data/` directory. 
 
 
@@ -58,7 +58,7 @@ python stage2.py --root 'data/PubChem324kV2' --devices '0,1' --filename "stage2"
 **Fine-tune Stage.** Run the following script for fine-tuning on the PubChem324k dataset:
 
 ```bash
-python stage2.py --root 'data/PubChem324k' --devices '0,1' --filename "ft_pubchem324k" --stage2_path "all_checkpoints/stage2/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8
+python stage2.py --root 'data/PubChem324kV2' --devices '0,1' --filename "ft_pubchem324k" --stage2_path "all_checkpoints/stage2/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8
 ```
 
 
