@@ -66,7 +66,7 @@ python stage2.py --root 'data/PubChem324kV2' --devices '0,1' --filename "ft_pubc
 
 We share the checkpoints for reproducing results of molecule-text retrieval and for reproducing results of molecule captioning on the CheBI-20 dataset.
 
-Please download the checkpoint from this [link](https://ufile.io/6vffm5bg) and unzip it under the `./all_checkpoints` directory.
+Please download the checkpoints from this [link](https://huggingface.co/acharkq/MolCA/tree/main) and put them under the `./all_checkpoints` directory.
 
 **Molecule-Text Retrieval for PCDes.** Run the following script for evaluation on the PCDes dataset.
 
