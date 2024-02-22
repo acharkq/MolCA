@@ -27,10 +27,22 @@ Authors: Zhiyuan Liu, Sihang Li, Yanchen Luo, Hao Fei, Yixin Cao, Kenji Kawaguch
 
 ## Requirements
 
-See `environment.yml`. Run the following command to create a new anaconda environment `molca`: 
+You can create the environment for MolCA running the following command in order:
 
-```bash
-conda env create -f environment.yml
+* conda create -n molca python=3.8
+* conda activate molca
+* conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.7 -c pytorch -c nvidia
+* conda install pyg -c pyg
+* pip install git+https://github.com/thunlp/OpenDelta.git
+* pip install rouge_score nltk ogb peft rdkit salesforce-lavis
+* pip install -U transformers pytorch-lightning 
+* pip install deepspeed
+* Download nltk corpus:
+
+```
+import nltk
+
+nltk.download('wordnet')
 ```
 
 ## Dataset
