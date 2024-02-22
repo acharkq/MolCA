@@ -27,7 +27,7 @@ Authors: Zhiyuan Liu, Sihang Li, Yanchen Luo, Hao Fei, Yixin Cao, Kenji Kawaguch
 
 ## Requirements
 
-You can create the environment for MolCA running the following command in order:
+You can create the environment for MolCA by running the following command in order:
 
 * conda create -n molca python=3.8
 * conda activate molca
