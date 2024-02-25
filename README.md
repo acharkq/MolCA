@@ -58,19 +58,19 @@ nltk.download('wordnet')
 **Pretrain Stage 1.** Run the following script for stage 1 pretraining on the PubChem324k dataset:
 
 ```bash
-python stage1.py --root 'data/PubChem324kV2' --gtm --lm --devices '0,1' --mode train --filename stage1 --rerank_cand_num 128 --num_query_token 8 --tune_gnn
+python stage1.py --root 'data/PubChem324kV2/' --gtm --lm --devices '0,1' --mode train --filename stage1 --rerank_cand_num 128 --num_query_token 8 --tune_gnn
 ```
 
 **Pretrain Stage 2.** Run the following script for stage 2 pretraining on the PubChem324k dataset:
 
 ```bash
-python stage2.py --root 'data/PubChem324kV2' --devices '0,1' --filename "stage2" --stage1_path "all_checkpoints/stage1/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 10 --mode pretrain --prompt '[START_I_SMILES]{}[END_I_SMILES].' --tune_gnn --llm_tune freeze --inference_batch_size 4
+python stage2.py --root 'data/PubChem324kV2/' --devices '0,1' --filename "stage2" --stage1_path "all_checkpoints/stage1/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 10 --mode pretrain --prompt '[START_I_SMILES]{}[END_I_SMILES].' --tune_gnn --llm_tune freeze --inference_batch_size 4
 ```
 
 **Fine-tune Stage.** Run the following script for fine-tuning on the PubChem324k dataset:
 
 ```bash
-python stage2.py --root 'data/PubChem324kV2' --devices '0,1' --filename "ft_pubchem324k" --stage2_path "all_checkpoints/stage2/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8
+python stage2.py --root 'data/PubChem324kV2/' --devices '0,1' --filename "ft_pubchem324k" --stage2_path "all_checkpoints/stage2/last.ckpt" --opt_model 'facebook/galactica-1.3b' --max_epochs 100 --mode ft --prompt '[START_I_SMILES]{}[END_I_SMILES]. ' --tune_gnn --llm_tune lora --inference_batch_size 8
 ```
 
 
